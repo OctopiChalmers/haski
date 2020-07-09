@@ -1,2 +1,1 @@
-Server BLE code for the DSLustre example.
-The temperature/octavius sensor is modeled as a GATT server.
+Server BLE code for the Halexa example. The temperature and motion sensors are modeled as a GATT server.
