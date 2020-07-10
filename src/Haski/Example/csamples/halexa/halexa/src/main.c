@@ -30,28 +30,64 @@
 /* This is the generated Halexa code from DSLustre, just
  * pasted in for simplicity. */
 /*****************************************************/
-struct main_mem
-{ int d;
-  int c;
+struct blexa_mem
+{ int l;
 };
-void (main_reset(struct main_mem (* self))) {
-  ((*(self)).d) = (1);
-  ((*(self)).c) = (0);
-}
-int (main_step(struct main_mem (* self))) {
-  int b;
-  int a;
-  (b) = ((*(self)).d);
-  (a) = ((*(self)).c);
-  ((*(self)).d) = ((a) + (b));
-  ((*(self)).c) = (b);
-  return a;
+
+struct blexa_mem *main_mem;
+
+void (blexa_reset(struct blexa_mem (* self))) {
+  ((*(self)).l) = (0);
 }
 
-struct main_mem *obj_main;
+int (blexa_step(struct blexa_mem (* self), int a, int b)) {
+  int j;
+  int d;
+  int m;
+  int k;
+  int g;
+  int f;
+  int e;
+  int c;
+  int o;
+  int n;
+  int h;
+  switch (b) {
+    case (2): (j) = (2); break;
+    case (1): (j) = (1); break;
+    case (0): (j) = (0); break;
+  };
+  (f) = ((*(self)).l);
+  (d) = (j);
+  switch (d) {
+    case (2): (k) = (1); break;
+    case (1): (k) = (0); break;
+    case (0): (k) = (f); break;
+  };
+  (e) = (k);
+  switch (b) {
+    case (2): (m) = (1); break;
+    case (1): (m) = (0); break;
+    case (0): (m) = (e); break;
+  };
+  (g) = (m);
+  ((*(self)).l) = (e);
+  (c) = ((a) > (30));
+  switch (c) {
+    case (1): (n) = (1); break;
+    case (0): (n) = (0); break;
+  };
+  switch (g) {
+    case (1): (o) = (n); break;
+    case (0): (o) = (2); break;
+  };
+  (h) = (o);
+  return h;
+}
+
 int func(int temp, int door) {
-    int x = main_step(obj_main);
-    printk("%d\n",x);
+    int x = blexa_step(main_mem, temp, door);
+    printk("temperature: %d octavius %d windowCommand %d\n",temp, door, x);
     return 0;
 }
 /*****************************************************/
@@ -399,7 +435,7 @@ void start_bt(void)
 }
 
 void main(void) {
-    obj_main = k_malloc (sizeof(struct main_mem));
-    main_reset(obj_main);
+    main_mem = (struct blexa_mem*) k_malloc (sizeof(struct blexa_mem));
+    blexa_reset(main_mem);
     start_bt();
 }
