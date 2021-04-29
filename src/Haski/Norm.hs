@@ -36,6 +36,9 @@ type instance ArgNeg NormP = ()
 type instance ArgGt  NormP = ()
 type instance ArgFby NormP = TypeError (Invalid "NA" "Fby")
 type instance ArgMrg NormP = TypeError (Invalid "NA" "Merge")
+-- TODO: I don't know how this is mean to work; use placeholders for now:
+type instance ArgCaseOf NormP = ()
+type instance ArgSym NormP = ()
 
 
 -- normal control expressions
@@ -114,6 +117,9 @@ pattern NGNeg ann e     = GNeg (ann,()) e
 pattern NGGt :: () => (a ~ Bool) => ArgGt p -> NGExp p Int -> NGExp p Int -> NGExp p a
 pattern NGGt ann e1 e2 = GGt (ann,()) e1 e2
 
+pattern NGCaseOf ann scrut branches = GCaseOf (ann, ()) scrut branches
+pattern NGSym ann sid = GSym (ann, ()) sid
+
 -- normalize control expressions
 normCA :: (AllEq p q) => GExp p a -> Norm p (NCA p a)
 -- a nested merge, no substitution is generated
@@ -167,6 +173,23 @@ normE (GGt ann e1 e2) = do
     e1' <- normE e1
     e2' <- normE e2 -- eww, e2' normalizes in the filth of e1'
     return (NGGt ann e1' e2')
+normE (GCaseOf ann scrut branches) = do
+    scrut' <- normScrut scrut
+    branches' <- mapM normBranch branches
+    return $ NGCaseOf ann scrut' branches'
+  where
+    -- TODO: Explicit type signatures!
+    -- normScrut :: Scrut p a -> Norm p (Scrut (p, NormP) a)
+    normScrut (Scrut e sid) = (`Scrut` sid) <$> normE e
+
+    -- normBranch :: Branch p x t -> Norm p (Branch (p, NormP) y t)
+    normBranch (Branch scrut branches) = do
+        scrut' <- normE scrut
+        branches' <- normE branches
+        return $ Branch scrut' branches'
+
+normE (GSym ann sid) = return (NGSym ann sid)
+
 
 -- normalize a definition (monadic result)
 normD :: (AllEq p q) => GDef p -> Norm p (NGDef p)
