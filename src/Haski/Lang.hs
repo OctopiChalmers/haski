@@ -35,6 +35,10 @@ module Haski.Lang (
     , TypeRepLT
     , userDefLT
 
+    -- Pattern matching
+    , Partition (..)
+    , caseof
+
     -- IFC extension
     , LStream
     , labelOf
@@ -82,6 +86,33 @@ import Haski.DCLabel.PrettyShow
 
 import Text.PrettyPrint
 import Text.PrettyPrint.HughesPJClass hiding (prettyShow)
+
+
+----------------------------
+-- Pattern matching stuff --
+----------------------------
+
+class Partition a t where
+    -- TODO: from 't' to 'Haski t'
+    partition :: [Stream a -> (Stream Bool, t)]
+
+-- TODO: Currently lacks
+-- * Unique variable generation (so we can have nested cases if necessary)
+-- * The stuff to avoid redundant output code when referencing pattern
+--   variables multiple times (leading to the expressions returned by
+--   'partition' appearing multiple times as well.)
+caseof :: forall t a b . (Partition a t, LT a, LT b)
+    => Stream a
+    -> (t -> Stream b)
+    -> Stream b
+caseof scrut f =
+    let scrutId = "SCRUTNAME"  -- placeholder
+        branches = map ($ Sym scrutId) (partition @a @t)
+        exp = CaseOf (Scrut scrut scrutId) (map mkBranch branches)
+    in exp
+  where
+    mkBranch :: (Stream Bool, t) -> Branch RawP t b
+    mkBranch (pred, t) = Branch pred (f t)
 
 ----------------------------------
 -- Primitive Lustre combinators --
