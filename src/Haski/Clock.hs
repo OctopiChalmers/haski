@@ -1,6 +1,7 @@
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeFamilies #-}
+
 module Haski.Clock where
 
 import Haski.Type
@@ -217,6 +218,25 @@ inferClock (GGt ann e1 e2) = do
     e1' <- checkClock e1 a
     e2' <- checkClock e2 a
     return (GGt (ann,a) e1' e2')
+inferClock (GCaseOf ann scrut branches) = do
+    a <- freshTyVar
+    scrut' <- inferClockScrut scrut
+    branches' <- mapM inferClockBranch branches
+    return (GCaseOf (ann, a) scrut' branches')
+  where
+    inferClockScrut :: Scrut p e -> Infer (Scrut (p, CkTy) e)
+    inferClockScrut (Scrut scrutE sid) = do
+        a <- freshTyVar
+        scrutE' <- checkClock scrutE a
+        pure $ Scrut scrutE' sid
+
+    inferClockBranch :: Branch p t b -> Infer (Branch (p, CkTy) t b)
+    inferClockBranch (Branch predE bodyE) = do
+        a <- freshTyVar
+        predE' <- checkClock predE a
+        bodyE' <- checkClock bodyE a
+        pure $ Branch predE' bodyE'
+inferClock (GSym ann sid) = (\ a -> GSym (ann, a) sid) <$> freshTyVar
 
 -- Check that an expression has a given clock
 checkClock :: GExp p a -> CkTy -> Infer (CtGExp p a)
