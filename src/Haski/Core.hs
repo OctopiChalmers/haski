@@ -67,7 +67,7 @@ data GExp p a where
     -- Pattern matching
     GCaseOf :: (LT a, LT b)
         => ArgCaseOf p -> Scrut p a -> [Branch p t b] -> GExp p b
-    GSym :: ArgSym p -> ScrutId -> GExp p a
+    GSym :: LT a => ArgSym p -> ScrutId -> GExp p a
 
 -- Scrutinee of a pattern match
 data Scrut p a = Scrut (GExp p a) ScrutId
@@ -148,6 +148,7 @@ mapAnn f (GCaseOf p scrut branches) =
     annBranch :: (AllEq p0 p0', AllEq q0 q0')
         => (p0' -> q0') -> Branch p0 t b -> Branch q0 t b
     annBranch f (Branch predE bodyE) = Branch (mapAnn f predE) (mapAnn f bodyE)
+mapAnn f (GSym p sid) = GSym (f p) sid
 
 mapSndAnn :: (AllEq q q', AllEq r r')
     => (q' -> r') -> GExp (p,q) a -> GExp (p,r) a
@@ -173,6 +174,7 @@ mapSndAnn f (GCaseOf (p,q) scrut branches) =
         => (q0' -> r0') -> Branch (p0, q0) t a -> Branch (p0, r0) t a
     sndAnnBranch f (Branch predE bodyE) =
         Branch (mapSndAnn f predE) (mapSndAnn f bodyE)
+mapSndAnn f (GSym (p, q) sid) = GSym (p, f q) sid
 
 mapDef :: (forall a . GExp p a -> GExp q a)
     -> GDef p -> GDef q
@@ -201,6 +203,7 @@ getAnn (GSig p e)    = p
 getAnn (GNeg p e)    = p
 getAnn (GGt p e e')  = p
 getAnn (GCaseOf p _predE _bodyE) = p
+getAnn (GSym p _) = p
 
 -- seems like a rather expensive operation, use sparingly!
 -- the things we do for type-safety.. tsk tsk.
@@ -246,6 +249,7 @@ unpack (GCaseOf (p, q) scrut branches) =
         let (predE1, predE2) = unpack predE
             (bodyE1, bodyE2) = unpack bodyE
         in (Branch predE1 bodyE1, Branch predE2 bodyE2)
+unpack (GSym (p, q) sid) = (GSym p sid, GSym q sid)
 
 fresh :: (Fresh s, Monad m) => StateT s m (Var a)
 fresh = do
@@ -270,3 +274,4 @@ getLTDict (GGt _ _ _)     = Dict @(LT Bool)
 -- TODO: What to do here? What does getLTDict do?
 getLTDict (GCaseOf _ _ _) = Dict
 -- getLTDict (GCaseOf _ scrut branches) = error "getLTDict not defined for GCaseOf"
+getLTDict (GSym _ _) = Dict
