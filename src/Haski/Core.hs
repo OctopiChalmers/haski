@@ -36,7 +36,6 @@ theTrick f = (f . fromBFin) <$> (enumerate @(Size a) @(BFin (Size a) a))
 type RecEnumerable n a = (LT a, Enumerable n (BFin n a), KnownNat n)
 
 data GExp p a where
-
     -- Values and Variables
     GVal     :: LT a
         => ArgVal p -> a -> GExp p a
@@ -65,6 +64,19 @@ data GExp p a where
     GGt     :: ()
         => ArgGt p -> GExp p Int -> GExp p Int -> GExp p Bool
 
+    -- Pattern matching
+    GCaseOf :: (LT a, LT b)
+        => ArgCaseOf p -> Scrut p a -> [Branch p t b] -> GExp p b
+    GSym :: ArgSym p -> ScrutId -> GExp p a
+
+-- Scrutinee of a pattern match
+data Scrut p a = Scrut (GExp p a) ScrutId
+type ScrutId = String
+
+-- Branch of a pattern match (predicate on scrutinee for selecting branch
+-- + body of branch, which is an expression)
+data Branch p t b = LT b => Branch (GExp p Bool) (GExp p b)
+
 data GDef p where
     Let :: LT a => Var a -> GExp p a -> GDef p
     App :: LT a => Var a -> Name -> [Ex (GExp p)] -> GDef p
@@ -91,6 +103,8 @@ pattern Neg   e     = GNeg () e
 pattern Gt :: (ArgGt p ~ ()) => (a ~ Bool)
     => GExp p Int -> GExp p Int -> GExp p a
 pattern Gt e1 e2    = GGt () e1 e2
+pattern CaseOf scrut branches = GCaseOf () scrut branches
+pattern Sym scrutId = GSym () scrutId
 
 
 -- Treat (number) expressions as numbers
@@ -124,6 +138,16 @@ mapAnn f (GAbs p e )   = GAbs (f p) (mapAnn f e)
 mapAnn f (GSig p e )   = GSig (f p) (mapAnn f e)
 mapAnn f (GNeg p e )   = GNeg (f p) (mapAnn f e)
 mapAnn f (GGt p e e')  = GGt (f p) (mapAnn f e) (mapAnn f e')
+mapAnn f (GCaseOf p scrut branches) =
+    GCaseOf (f p) (annScrut f scrut) (map (annBranch f) branches)
+  where
+    annScrut :: (AllEq p0 p0', AllEq q0 q0')
+        => (p0' -> q0') -> Scrut p0 a -> Scrut q0 a
+    annScrut f (Scrut e sid) = Scrut (mapAnn f e) sid
+
+    annBranch :: (AllEq p0 p0', AllEq q0 q0')
+        => (p0' -> q0') -> Branch p0 t b -> Branch q0 t b
+    annBranch f (Branch predE bodyE) = Branch (mapAnn f predE) (mapAnn f bodyE)
 
 mapSndAnn :: (AllEq q q', AllEq r r')
     => (q' -> r') -> GExp (p,q) a -> GExp (p,r) a
@@ -138,6 +162,17 @@ mapSndAnn f (GAbs (p,q) e )   = GAbs (p, f q) (mapSndAnn f e)
 mapSndAnn f (GSig (p,q) e )   = GSig (p, f q) (mapSndAnn f e)
 mapSndAnn f (GNeg (p,q) e )   = GNeg (p, f q) (mapSndAnn f e)
 mapSndAnn f (GGt (p,q) e e')  = GGt (p, f q) (mapSndAnn f e) (mapSndAnn f e')
+mapSndAnn f (GCaseOf (p,q) scrut branches) =
+    GCaseOf (p, f q) (sndAnnScrut f scrut) (map (sndAnnBranch f) branches)
+  where
+    sndAnnScrut :: (AllEq q0 q0', AllEq r0 r0')
+        => (q0' -> r0') -> Scrut (p0, q0) a -> Scrut (p0, r0) a
+    sndAnnScrut f (Scrut e sid) = Scrut (mapSndAnn f e) sid
+
+    sndAnnBranch :: (AllEq q0 q0', AllEq r0 r0')
+        => (q0' -> r0') -> Branch (p0, q0) t a -> Branch (p0, r0) t a
+    sndAnnBranch f (Branch predE bodyE) =
+        Branch (mapSndAnn f predE) (mapSndAnn f bodyE)
 
 mapDef :: (forall a . GExp p a -> GExp q a)
     -> GDef p -> GDef q
@@ -165,6 +200,7 @@ getAnn (GAbs p e)    = p
 getAnn (GSig p e)    = p
 getAnn (GNeg p e)    = p
 getAnn (GGt p e e')  = p
+getAnn (GCaseOf p _predE _bodyE) = p
 
 -- seems like a rather expensive operation, use sparingly!
 -- the things we do for type-safety.. tsk tsk.
@@ -195,6 +231,21 @@ unpack (GGt (p,q) e e') = let
     (e1, e2)   = unpack e
     (e1', e2') = unpack e'
     in (GGt p e1 e1', GGt q e2 e2')
+unpack (GCaseOf (p, q) scrut branches) =
+    let (scrut1, scrut2)       = unpackScrut scrut
+        (branches1, branches2) = unzip $ map unpackBranch branches
+    in (GCaseOf p scrut1 branches1, GCaseOf q scrut2 branches2)
+  where
+    unpackScrut :: Scrut (p, q) a -> (Scrut p a, Scrut q a)
+    unpackScrut (Scrut e sid) =
+        let (e1, e2) = unpack e
+        in (Scrut e1 sid, Scrut e2 sid)
+
+    unpackBranch :: Branch (p, q) t b -> (Branch p t b, Branch q t b)
+    unpackBranch (Branch predE bodyE) =
+        let (predE1, predE2) = unpack predE
+            (bodyE1, bodyE2) = unpack bodyE
+        in (Branch predE1 bodyE1, Branch predE2 bodyE2)
 
 fresh :: (Fresh s, Monad m) => StateT s m (Var a)
 fresh = do
@@ -216,3 +267,6 @@ getLTDict (GSig _ e)      = getLTDict e
 getLTDict (GNeg _ e)      = getLTDict e
 getLTDict (GAbs _ e)      = getLTDict e
 getLTDict (GGt _ _ _)     = Dict @(LT Bool)
+-- TODO: What to do here? What does getLTDict do?
+getLTDict (GCaseOf _ _ _) = Dict
+-- getLTDict (GCaseOf _ scrut branches) = error "getLTDict not defined for GCaseOf"

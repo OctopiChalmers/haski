@@ -43,6 +43,8 @@ type instance ArgAbs ClockP = Clock
 type instance ArgSig ClockP = Clock
 type instance ArgNeg ClockP = Clock
 type instance ArgGt  ClockP = Clock
+type instance ArgCaseOf ClockP = Clock
+type instance ArgSym ClockP = Clock
 
 pattern CVal :: () => (LT a)
     => Clock -> a -> GExp ClockP a
@@ -351,6 +353,8 @@ type instance ArgAbs CkTy = CkTy
 type instance ArgSig CkTy = CkTy
 type instance ArgNeg CkTy = CkTy
 type instance ArgGt  CkTy = CkTy
+type instance ArgCaseOf CkTy = CkTy
+type instance ArgSym CkTy = CkTy
 
 instance Eq CkTy where
     BaseTy == BaseTy
