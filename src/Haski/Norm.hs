@@ -1,3 +1,4 @@
+-- TODO: Clean up stuff from the CaseOf addition (imports etc.)
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -113,7 +114,6 @@ pattern NGMul ann e1 e2 = GMul (ann,()) e1 e2
 pattern NGAbs ann e     = GAbs (ann,()) e
 pattern NGSig ann e     = GSig (ann,()) e
 pattern NGNeg ann e     = GNeg (ann,()) e
-
 pattern NGGt :: () => (a ~ Bool) => ArgGt p -> NGExp p Int -> NGExp p Int -> NGExp p a
 pattern NGGt ann e1 e2 = GGt (ann,()) e1 e2
 
@@ -121,7 +121,7 @@ pattern NGCaseOf ann scrut branches = GCaseOf (ann, ()) scrut branches
 pattern NGSym ann sid = GSym (ann, ()) sid
 
 -- normalize control expressions
-normCA :: (AllEq p q) => GExp p a -> Norm p (NCA p a)
+normCA :: forall p q a . (AllEq p q) => GExp p a -> Norm p (NCA p a)
 -- a nested merge, no substitution is generated
 normCA (GMrg ann scrut branches) = do
     -- normalize branches
@@ -178,16 +178,23 @@ normE (GCaseOf ann scrut branches) = do
     branches' <- mapM normBranch branches
     return $ NGCaseOf ann scrut' branches'
   where
-    -- TODO: Explicit type signatures!
-    -- normScrut :: Scrut p a -> Norm p (Scrut (p, NormP) a)
-    normScrut (Scrut e sid) = (`Scrut` sid) <$> normE e
+    -- TODO: What does AllEq p q do, since we don't use q? I assume it says
+    --       something like:
+    --          * ArgVal p is equivalent to a
+    --          * ArgVar p is equivalent to a
+    --          * ...
+    --          * Since all the above types are equivalent to a, they are
+    --          * all equivalent to each other!
+    normScrut :: (AllEq p q) => Scrut p a -> Norm p (Scrut (p, NormP) a)
+    normScrut a@(Scrut e sid) = do
+        e' <- normE e
+        pure $ Scrut e' sid
 
-    -- normBranch :: Branch p x t -> Norm p (Branch (p, NormP) y t)
+    normBranch :: (AllEq p q) => Branch p t b -> Norm p (Branch (p, NormP) t b)
     normBranch (Branch scrut branches) = do
         scrut' <- normE scrut
         branches' <- normE branches
         return $ Branch scrut' branches'
-
 normE (GSym ann sid) = return (NGSym ann sid)
 
 

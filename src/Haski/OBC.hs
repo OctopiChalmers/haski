@@ -1,3 +1,5 @@
+-- TODO: Clean up stuff from the CaseOf addition (imports etc.)
+
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -16,9 +18,10 @@ import Haski.Enum
 import Haski.Fin
 import Haski.Clock (Clock(..),ClockP)
 
-import Data.Typeable (eqT)
+import Data.Typeable (Typeable, eqT)
 import Data.Coerce (coerce)
 import Data.Foldable (foldrM)
+import Data.Maybe (isJust)
 import qualified Data.Set as S
 
 import Control.Monad.Reader hiding (join)
@@ -77,9 +80,51 @@ data Exp p a where
     Abs :: Exp p a -> Exp p a
     Gt  :: Exp p Int -> Exp p Int -> Exp p Bool
 
+    -- TODO: Define this differently so that we can avoid the awful equality
+    --       definition?
+    CaseOf :: ()
+        => Scrut p a
+        -> [Branch p t b]
+        -> Exp p b
+    Sym :: ScrutId -> Exp p a
+
 deriving instance Eq (Var a)
-deriving instance Eq (Exp p a)
 deriving instance Ord (Var a)
+-- deriving instance Eq (Exp p a)
+
+-- Most cases are trivial, but the CaseOf constructor needs to check if types
+-- of its arguments (that are not the 'b' in return 'Exp p b') are equal too.
+instance Eq a => Eq (Exp p a) where
+    Var v     == Var w       = v == w
+    Ref v     == Ref w       = v == w
+    Val x     == Val w       = x == w
+    Add e1 e2 == Add e1' e2' = e1 == e1' && e2 == e2'
+    Mul e1 e2 == Mul e1' e2' = e1 == e1' && e2 == e2'
+    Sig e     == Sig e'      = e == e'
+    Neg e     == Neg e'      = e == e'
+    Abs e     == Abs e'      = e == e'
+    Gt n1 n2  == Gt m1 m2    = n1 == m1 && n2 == m2
+
+    -- TODO: Just say that CaseOfs are never equal for now, until I can figure
+    --       the types out.
+    -- CaseOf (s :: Scrut p x) bs == CaseOf (s' :: Scrut p y) bs' =
+    --     isJust (eqT @x @y) && and (zipWith eqBranch bs bs')
+    --   where
+    --     eqBranch :: forall p t0 t1 a . (Typeable t0, Typeable t1, Eq a)
+    --         => Branch p t0 a -> Branch p t1 a -> Bool
+    --     eqBranch (Branch pred body) (Branch pred' body') =
+    --         pred == pred' && body == body' && isJust (eqT @t0 @t1)
+    Sym s == Sym s' = s == s'
+    _ == _ = False
+
+-- These are basically copies of types from "Haski.Core", but contains 'Exp'
+-- instead of 'Haski.Core.GExp'.
+data Scrut p a = LT a => Scrut (Exp p a) ScrutId
+type ScrutId = String
+deriving instance Eq a => Eq (Scrut p a)
+
+data Branch p t b = LT b => Branch (Exp p Bool) (Exp p b)
+deriving instance Eq b => Eq (Branch p t b)
 
 instance Named Obj where
     getName = objName
@@ -161,6 +206,26 @@ te (NGSig _ e)     = Sig <$> (te e)
 te (NGNeg _ e)     = Neg <$> (te e)
 te (NGAbs _ e)     = Abs <$> (te e)
 te (NGGt _ e1 e2)  = Gt <$> (te e1) <*> (te e2)
+te (NGCaseOf _ scrut branches) = do
+        -- TODO: These were used in an attempt to get (Typeable t) constraint
+        --       on Branch to work. We might not even need Typeable on that?
+        -- (scrut    ::  Core.Scrut  (p, NormP) a   )
+        -- (branches :: [Core.Branch (p, NormP) t b])) = do
+       scrut' <- teScrut scrut
+       branches' <- mapM teBranch branches
+       pure $ CaseOf scrut' branches'
+  where
+    teScrut :: Core.Scrut (p, NormP) a -> Gen p (Scrut p a)
+    teScrut (Core.Scrut e sid) = do
+        e' <- te e
+        pure $ Scrut e' sid
+
+    teBranch :: Core.Branch (p, NormP) t b -> Gen p (Branch p t b)
+    teBranch (Core.Branch pred body) = do
+        pred' <- te pred
+        body' <- te body
+        pure $ Branch pred' body'
+te (NGSym _ sid) = pure $ Sym sid
 
 -- translates control expressions to statements
 tca :: LT a => Var a -> NCA p a -> Gen p (Stmt p)

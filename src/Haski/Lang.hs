@@ -57,6 +57,7 @@ import Data.Int (Int8)
 import Data.Maybe (fromJust)
 import qualified Data.Map as M
 import Data.Constraint (withDict)
+import Data.Typeable (Typeable)
 import Control.Monad (replicateM,unless)
 import qualified Control.Monad as ControlM
 import Control.Monad.Identity (Identity, runIdentity)
@@ -101,7 +102,7 @@ class Partition a t where
 -- * The stuff to avoid redundant output code when referencing pattern
 --   variables multiple times (leading to the expressions returned by
 --   'partition' appearing multiple times as well.)
-caseof :: forall t a b . (Partition a t, LT a, LT b)
+caseof :: forall t a b . (Partition a t, LT a, LT b, Typeable t)
     => Stream a
     -> (t -> Stream b)
     -> Stream b

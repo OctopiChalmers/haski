@@ -1,3 +1,4 @@
+-- TODO: Clean up stuff from the CaseOf addition (imports etc.)
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilies #-}

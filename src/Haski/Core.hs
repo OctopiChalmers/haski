@@ -1,3 +1,4 @@
+-- TODO: Clean up stuff from the CaseOf addition (imports etc.)
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE PatternSynonyms #-}
@@ -13,6 +14,7 @@ import GHC.TypeLits
 import qualified Data.Map as M
 import Data.Coerce (coerce)
 import Data.Constraint (Dict(..))
+import Data.Typeable (Typeable)
 
 import Control.Monad (mapM, guard, zipWithM_)
 import Control.Monad.State.Lazy (StateT, get, execState, modify)
@@ -70,7 +72,7 @@ data GExp p a where
     GSym :: LT a => ArgSym p -> ScrutId -> GExp p a
 
 -- Scrutinee of a pattern match
-data Scrut p a = Scrut (GExp p a) ScrutId
+data Scrut p a = LT a => Scrut (GExp p a) ScrutId
 type ScrutId = String
 
 -- Branch of a pattern match (predicate on scrutinee for selecting branch
