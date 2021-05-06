@@ -115,7 +115,7 @@ caseof scrut f = do
     let branches = map ($ scrutVar) (partition @a @t)
     pure $ CaseOf (Scrut scrut scrutId) (map mkBranch branches)
   where
-    mkBranch :: (Stream Bool, t) -> Branch RawP t b
+    mkBranch :: (Stream Bool, t) -> Branch RawP b
     mkBranch (pred, t) = Branch pred (f t)
 
 ----------------------------------

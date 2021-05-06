@@ -235,7 +235,7 @@ inferClock (GCaseOf ann scrut branches) = do
         scrutE' <- checkClock scrutE ckty
         pure $ Scrut scrutE' sid
 
-    inferClockBranch :: CkTy -> Branch p t b -> Infer (Branch (p, CkTy) t b)
+    inferClockBranch :: CkTy -> Branch p b -> Infer (Branch (p, CkTy) b)
     inferClockBranch ckty (Branch predE bodyE) = do
         predE' <- checkClock predE ckty
         bodyE' <- checkClock bodyE ckty

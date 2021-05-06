@@ -184,7 +184,7 @@ normE (GCaseOf ann scrut branches) = do
         e' <- normE e
         pure $ Scrut e' sid
 
-    normBranch :: (AllEq p q) => Branch p t b -> Norm p (Branch (p, NormP) t b)
+    normBranch :: (AllEq p q) => Branch p b -> Norm p (Branch (p, NormP) b)
     normBranch (Branch scrut branches) = do
         scrut' <- normE scrut
         branches' <- normE branches

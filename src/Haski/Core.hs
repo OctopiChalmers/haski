@@ -68,7 +68,7 @@ data GExp p a where
 
     -- Pattern matching
     GCaseOf :: (LT a, LT b)
-        => ArgCaseOf p -> Scrut p a -> [Branch p t b] -> GExp p b
+        => ArgCaseOf p -> Scrut p a -> [Branch p b] -> GExp p b
     -- GSym :: LT a => ArgSym p -> ScrutId -> GExp p a
 
 -- Scrutinee of a pattern match
@@ -77,7 +77,7 @@ type ScrutId = String
 
 -- Branch of a pattern match (predicate on scrutinee for selecting branch
 -- + body of branch, which is an expression)
-data Branch p t b = LT b => Branch (GExp p Bool) (GExp p b)
+data Branch p b = LT b => Branch (GExp p Bool) (GExp p b)
 
 data GDef p where
     Let :: LT a => Var a -> GExp p a -> GDef p
@@ -148,7 +148,7 @@ mapAnn f (GCaseOf p scrut branches) =
     annScrut f (Scrut e sid) = Scrut (mapAnn f e) sid
 
     annBranch :: (AllEq p0 p0', AllEq q0 q0')
-        => (p0' -> q0') -> Branch p0 t b -> Branch q0 t b
+        => (p0' -> q0') -> Branch p0 b -> Branch q0 b
     annBranch f (Branch predE bodyE) = Branch (mapAnn f predE) (mapAnn f bodyE)
 -- mapAnn f (GSym p sid) = GSym (f p) sid
 
@@ -173,7 +173,7 @@ mapSndAnn f (GCaseOf (p,q) scrut branches) =
     sndAnnScrut f (Scrut e sid) = Scrut (mapSndAnn f e) sid
 
     sndAnnBranch :: (AllEq q0 q0', AllEq r0 r0')
-        => (q0' -> r0') -> Branch (p0, q0) t a -> Branch (p0, r0) t a
+        => (q0' -> r0') -> Branch (p0, q0) a -> Branch (p0, r0) a
     sndAnnBranch f (Branch predE bodyE) =
         Branch (mapSndAnn f predE) (mapSndAnn f bodyE)
 -- mapSndAnn f (GSym (p, q) sid) = GSym (p, f q) sid
@@ -246,7 +246,7 @@ unpack (GCaseOf (p, q) scrut branches) =
         let (e1, e2) = unpack e
         in (Scrut e1 sid, Scrut e2 sid)
 
-    unpackBranch :: Branch (p, q) t b -> (Branch p t b, Branch q t b)
+    unpackBranch :: Branch (p, q) b -> (Branch p b, Branch q b)
     unpackBranch (Branch predE bodyE) =
         let (predE1, predE2) = unpack predE
             (bodyE1, bodyE2) = unpack bodyE

@@ -4,6 +4,10 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
+
 module Haski.OBC where
 
 import Haski.Core (Var,RecEnumerable)
@@ -22,10 +26,12 @@ import Data.Typeable (Typeable, eqT)
 import Data.Coerce (coerce)
 import Data.Foldable (foldrM)
 import Data.Maybe (isJust)
+import Data.Proxy (Proxy(..))
 import qualified Data.Set as S
+import qualified Data.Map.Strict as M
 
 import Control.Monad.Reader hiding (join)
-import Control.Monad.State.Lazy (State, StateT, get, runState, execState, modify)
+import Control.Monad.State.Lazy (State, StateT, get, runState, execState, modify, modify')
 
 newtype Field a = Field {toTup :: (Var a,a)}
 
@@ -51,6 +57,9 @@ data Step p where
         -> [Stmt p]     -- | Body
         -> Step p
 
+-- | Function definition for handling the logic of a pattern match.
+data CaseDef p = forall argTy . (LT argTy) => CaseDef (Proxy argTy) [Stmt p]
+
 data Stmt p where
     Let     :: LT a => Var a -> Exp p a -> Stmt p
     Ass     :: Var a -> Exp p a -> Stmt p
@@ -66,6 +75,10 @@ data Stmt p where
         -> Obj          -- | object instance
         -> [Ex (Exp p)] -- | arguments
         -> Stmt p
+
+    Decl   :: LT a => Var a -> Stmt p
+    If     :: Exp p Bool -> [Stmt p] -> Stmt p
+    Return :: Exp p a -> Stmt p
 
 data Exp p a where
     -- "simple" variable
@@ -87,6 +100,9 @@ data Exp p a where
         -> [Branch p t b]
         -> Exp p b
     -- Sym :: ScrutId -> Exp p a
+
+    -- Function call (argument and function name).
+    Call :: Exp p a -> String -> Exp p b
 
 deriving instance Eq (Var a)
 deriving instance Ord (Var a)
@@ -116,6 +132,9 @@ instance Eq a => Eq (Exp p a) where
     --     eqBranch (Branch pred body) (Branch pred' body') =
     --         pred == pred' && body == body' && isJust (eqT @t0 @t1)
     -- Sym s == Sym s' = s == s'
+
+    -- Function calls are never equal for now
+    Call{} == Call{} = False
     _ == _ = False
 
 -- These are basically copies of types from "Haski.Core", but contains 'Exp'
@@ -161,18 +180,23 @@ joinList []       = Skip
 joinList [ s ]    = s
 joinList (s : ss) = join s (joinList ss)
 
-data GenSt p = GenSt {
-    fields  :: [Ex Field],
-    objs    :: [Obj],
-    reset   :: [Stmt p],
-    seed    :: Seed
-}
+data GenSt p = GenSt
+    { fields  :: [Ex Field]
+    , objs    :: [Obj]
+    , reset   :: [Stmt p]
+    , seed    :: Seed
+
+    , funDefs :: M.Map String (CaseDef p)
+    -- ^ Function definitions used to handle pattern matching logic. These are
+    -- generated during translation of expressions. The mapping is from the
+    -- name of the function to its definition
+    }
 
 type Gen p = State (GenSt p)
 
 instance Plant (GenSt p) Seed where
     plant seed = modify (\s -> s {seed = seed})
-    -- lol ^
+    -- 'plant seed', lol
 
 instance Plant (GenSt p) [Ex Field] where
     plant fields = modify (\s -> s {fields = fields})
@@ -208,26 +232,42 @@ te (NGSig _ e)     = Sig <$> (te e)
 te (NGNeg _ e)     = Neg <$> (te e)
 te (NGAbs _ e)     = Abs <$> (te e)
 te (NGGt _ e1 e2)  = Gt <$> (te e1) <*> (te e2)
-te (NGCaseOf _ scrut branches) = do
-        -- TODO: These were used in an attempt to get (Typeable t) constraint
-        --       on Branch to work. We might not even need Typeable on that?
-        -- (scrut    ::  Core.Scrut  (p, NormP) a   )
-        -- (branches :: [Core.Branch (p, NormP) t b])) = do
-       scrut' <- teScrut scrut
-       branches' <- mapM teBranch branches
-       pure $ CaseOf scrut' branches'
-  where
-    teScrut :: Core.Scrut (p, NormP) a -> Gen p (Scrut p a)
-    teScrut (Core.Scrut e sid) = do
-        e' <- te e
-        pure $ Scrut e' sid
-
-    teBranch :: Core.Branch (p, NormP) t b -> Gen p (Branch p t b)
-    teBranch (Core.Branch pred body) = do
-        pred' <- te pred
-        body' <- te body
-        pure $ Branch pred' body'
 -- te (NGSym _ sid) = pure $ Sym sid
+te (NGCaseOf
+    _
+    (scrut    :: Core.Scrut (p, NormP) scrutTy)
+    (branches :: [Core.Branch (p, NormP) a]))
+    = do
+        -- Generate the definition of the pattern matching function and add
+        -- it to the compilation state.
+        (funName, def) <- newCaseDef branches
+        modify $ \ st ->
+            let defs = funDefs st
+            in st { funDefs = defs }
+
+        -- Translate the scrutinee expression, it will be the argument to the
+        -- call to the pattern matching function.
+        let Core.Scrut e sid = scrut
+        e' <- te e
+        let funCall = Call e' funName
+
+        pure funCall
+  where
+    newCaseDef bs = do
+        funName <- freshName "fun"
+
+        retVar <- Core.MkVar . (, Nothing) <$> freshName "retVar"
+        ifs <- mapM (mkIf retVar) bs
+
+        let funBody = ifs
+        pure (funName, CaseDef (Proxy @scrutTy) ifs)
+
+    mkIf retVar (Core.Branch cond body) = do
+        cond' <- te cond
+        body' <- te body
+
+        pure $ If cond' [Let retVar body']
+
 
 -- translates control expressions to statements
 tca :: LT a => Var a -> NCA p a -> Gen p (Stmt p)
@@ -274,7 +314,7 @@ tpN (EQNode name args eqs res) sd = (clas, (seed resSt))
         -- build translation computation
         transM = (,) <$> teqlist eqs <*> te res
         -- execute translation
-        ((stmts,res'),resSt) = runState transM (GenSt [] [] [] sd)
+        ((stmts,res'),resSt) = runState transM (GenSt [] [] [] sd M.empty)
         -- build step method
         step = Step args res' stmts
         -- build class
