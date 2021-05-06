@@ -244,7 +244,7 @@ te (NGCaseOf
         (funName, def) <- newCaseDef branches
         modify $ \ st ->
             let defs = funDefs st
-            in st { funDefs = defs }
+            in st { funDefs = M.insert funName def defs }
 
         -- Translate the scrutinee expression, it will be the argument to the
         -- call to the pattern matching function.
