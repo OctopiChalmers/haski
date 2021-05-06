@@ -7,8 +7,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE TupleSections #-}
 
 module Haski.Lang (
     -- Basic Combinators
@@ -54,6 +52,7 @@ module Haski.Lang (
 ) where
 
 import Prelude hiding ((<>))
+import qualified Data.Bifunctor as Bifunctor
 import Data.Int (Int8)
 import Data.Maybe (fromJust)
 import qualified Data.Map as M
@@ -79,7 +78,7 @@ import Haski.Clock (clockNode)
 import Haski.Schedule (scheduleNode)
 import Haski.OBC (translateNode)
 import Haski.Backend (compileClasses)
-import Haski.Backend.C ()
+import Haski.Backend.C (compilePlusCaseOfDefs)
 import qualified Language.C99.AST as C (TransUnit)
 import Haski.Pass (AllEq,RawP)
 import Haski.DCLabel.Core
@@ -500,18 +499,20 @@ compile m = print . pPrint $ cUnit
     -- schedule
     (ns_s,s3) = runPass scheduleNode s2 ns_n
     -- translate to classes
-    (cs,s4)   = runPass translateNode s3 ns_s
+    ((cs, defs), s4) = Bifunctor.first unzip $ runPass translateNode s3 ns_s
     -- END compilation
-    cUnit     = compileClasses @C.TransUnit cs
+    -- cUnit     = compileClasses @C.TransUnit (cs, defs)
+    cUnit     = compilePlusCaseOfDefs (cs, defs)
     -- utlities
     runPass :: (a -> Seed -> (b,Seed)) -- | pass
         -> Seed         -- | seed
         -> [a]          -- | pass arguments
         -> ([b],Seed)   -- | pass results and a residue seed
     runPass f si ns_i = foldr (go f) ([],si) ns_i
-        where
-        go f n (ns,s) = let (n',s') = f n s
-            in (n':ns,s')
+      where
+        go f n (ns, s) =
+            let (n', s') = f n s
+            in (n' : ns, s')
 
 -----------------
 -- Boilerplate --

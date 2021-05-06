@@ -1,9 +1,11 @@
 -- TODO: Need a primer on how the code is generated :D
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 module Haski.Backend.C where
 
+import Data.Proxy (Proxy(..))
 import Text.PrettyPrint.HughesPJClass (Pretty(..))
 
 import Haski.OBC (Class(..), Field(..), Obj(..), Step(..) )
@@ -23,6 +25,9 @@ import Language.C99.Simple.Expr
 import qualified Language.C99.AST as C99.AST (TransUnit)
 import qualified Language.C99.Pretty as C99.Pretty (pretty)
 
+import Debug.Trace
+
+
 cType :: forall a . LT a => C.Type
 cType = TypeSpec $ case (typeRepLT @a) of
     TUnit -> Char
@@ -36,7 +41,20 @@ instance Pretty C99.AST.TransUnit where
     pPrint = C99.Pretty.pretty
 
 instance Backend C99.AST.TransUnit where
-    compileClasses = translate. foldr1 joinCTransUnit  . map cTransUnitFromClass
+    compileClasses = translate . foldr1 joinCTransUnit . map cTransUnitFromClass
+
+-- Ignoring the use of the Backend interface here, since it doesn't quite
+-- do what we want.
+compilePlusCaseOfDefs (cs, defs) =
+    translate $ TransUnit declns (fundefs ++ caseOfDefs)
+  where
+    TransUnit declns fundefs = cClasses cs
+
+    cClasses :: [Class p] -> C.TransUnit
+    cClasses = foldr1 joinCTransUnit . map cTransUnitFromClass
+
+    caseOfDefs :: [C.FunDef]
+    caseOfDefs = map cCaseOfDef defs
 
 cTransUnitFromClass :: Class p -> C.TransUnit
 cTransUnitFromClass (Class name fields instances reset step) =
@@ -49,6 +67,27 @@ cTransUnitFromClass (Class name fields instances reset step) =
 joinCTransUnit :: TransUnit -> TransUnit -> C.TransUnit
 joinCTransUnit (TransUnit decls1 defs1) (TransUnit decls2 defs2) =
     TransUnit (decls1 ++ decls2) (defs1 ++ defs2)
+
+-- | Compile an OBC representation of a pattern matching function into the
+-- C99.Simple AST representation.
+cCaseOfDef :: OBC.CaseOfDef p -> C.FunDef
+cCaseOfDef m = traceShow m $ undefined
+
+-- for debugging only
+instance Show (OBC.CaseDef p) where
+    show (OBC.CaseDef (Proxy :: Proxy argTy) stmts) =
+        "argTy: " ++ show (cType @argTy)
+
+-- for debugging only
+deriving instance Show C.Type
+deriving instance Show C.Expr
+deriving instance Show C.AssignOp
+deriving instance Show C.Init
+deriving instance Show C.UnaryOp
+deriving instance Show C.BinaryOp
+deriving instance Show C.TypeName
+deriving instance Show C.TypeSpec
+deriving instance Show C.FieldDecln
 
 voidC = Type (TypeSpec Void)
 
@@ -138,6 +177,8 @@ genCExpr (OBC.Neg e)     = neg $ genCExpr e
 genCExpr (OBC.Sig e)     = signumC $ genCExpr e
 genCExpr (OBC.Abs e)     = absC $ genCExpr e
 genCExpr (OBC.Gt e1 e2)  = (genCExpr e1) .> (genCExpr e2)
+genCExpr (OBC.Sym sid)   = Ident sid
+genCExpr (OBC.Call e f)  = Funcall (Ident f) [genCExpr e]
 
 caseC :: forall n b . RecEnumerable n b => C.Expr -> V.Vec n (C.Stmt) -> C.Stmt
 caseC scrut = Switch scrut . V.toList . V.zipWith mkCase (enumerate @n @(BFin n b))

@@ -95,10 +95,10 @@ data Exp p a where
 
     -- TODO: Define this differently so that we can avoid the awful equality
     --       definition?
-    CaseOf :: ()
-        => Scrut p a
-        -> [Branch p t b]
-        -> Exp p b
+    -- CaseOf :: ()
+    --     => Scrut p a
+    --     -> [Branch p t b]
+    --     -> Exp p b
     Sym :: ScrutId -> Exp p a
 
     -- Function call (argument and function name).
@@ -124,7 +124,7 @@ instance Eq a => Eq (Exp p a) where
 
     -- TODO: Just say that CaseOfs are never equal for now, until I can figure
     --       the types out.
-    CaseOf{} == CaseOf{} = False
+    -- CaseOf{} == CaseOf{} = False
     -- CaseOf (s :: Scrut p x) bs == CaseOf (s' :: Scrut p y) bs' =
     --     isJust (eqT @x @y) && and (zipWith eqBranch bs bs')
     --   where
@@ -181,13 +181,15 @@ joinList []       = Skip
 joinList [ s ]    = s
 joinList (s : ss) = join s (joinList ss)
 
+type CaseOfDef p = M.Map String (CaseDef p)
+
 data GenSt p = GenSt
     { fields  :: [Ex Field]
     , objs    :: [Obj]
     , reset   :: [Stmt p]
     , seed    :: Seed
 
-    , funDefs :: M.Map String (CaseDef p)
+    , funDefs :: CaseOfDef p
     -- ^ Function definitions used to handle pattern matching logic. These are
     -- generated during translation of expressions. The mapping is from the
     -- name of the function to its definition
@@ -309,8 +311,8 @@ teqlist :: [CEQ p] -> CGen p [CStmt p]
 teqlist eqs = foldrM go [] eqs
     where go eq accStmt = flip (:) accStmt <$> teq eq
 
-tpN :: CEQNode p -> Seed -> (CClass p,Seed)
-tpN (EQNode name args eqs res) sd = (clas, (seed resSt))
+tpN :: CEQNode p -> Seed -> ((CClass p, CaseOfDef (p, ClockP)), Seed)
+tpN (EQNode name args eqs res) sd = ((clas, funDefs resSt), seed resSt)
     where
         -- build translation computation
         transM = (,) <$> teqlist eqs <*> te res
