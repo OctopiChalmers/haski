@@ -17,6 +17,8 @@ import Control.Monad.RWS.Strict
 import Control.Monad.Identity (Identity, runIdentity)
 import Control.Monad.State.Lazy (StateT, get, put, evalStateT)
 
+import Debug.Trace
+
 import qualified Data.Set as S
 import qualified Data.Map as Map
 
@@ -46,7 +48,7 @@ type instance ArgSig ClockP = Clock
 type instance ArgNeg ClockP = Clock
 type instance ArgGt  ClockP = Clock
 type instance ArgCaseOf ClockP = Clock
--- type instance ArgSym ClockP = Clock
+type instance ArgSym ClockP = Clock
 
 pattern CVal :: () => (LT a)
     => Clock -> a -> GExp ClockP a
@@ -242,10 +244,8 @@ inferClock (GCaseOf ann scrut branches) = do
         pure $ Branch predE' bodyE'
 
 -- TODO: consider if we can piggyback on GVar if we use GVar instead of GSym
--- inferClock (GSym ann sid) = do -- (\ a -> GSym (ann, a) sid) <$> freshTyVar
---     undefined
---     -- a <- lookupEnv x
---     -- return (GVar (ann,a) x)
+-- For now, just use whatever
+inferClock (GSym ann sid) = (\ a -> GSym (ann, a) sid) <$> freshTyVar
 
 -- Check that an expression has a given clock
 checkClock :: GExp p a -> CkTy -> Infer (CtGExp p a)
@@ -383,7 +383,7 @@ type instance ArgSig CkTy = CkTy
 type instance ArgNeg CkTy = CkTy
 type instance ArgGt  CkTy = CkTy
 type instance ArgCaseOf CkTy = CkTy
--- type instance ArgSym CkTy = CkTy
+type instance ArgSym CkTy = CkTy
 
 instance Eq CkTy where
     BaseTy == BaseTy

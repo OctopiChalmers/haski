@@ -99,13 +99,14 @@ data Exp p a where
         => Scrut p a
         -> [Branch p t b]
         -> Exp p b
-    -- Sym :: ScrutId -> Exp p a
+    Sym :: ScrutId -> Exp p a
 
     -- Function call (argument and function name).
     Call :: Exp p a -> String -> Exp p b
 
 deriving instance Eq (Var a)
 deriving instance Ord (Var a)
+
 -- deriving instance Eq (Exp p a)
 
 -- Most cases are trivial, but the CaseOf constructor needs to check if types
@@ -131,7 +132,7 @@ instance Eq a => Eq (Exp p a) where
     --         => Branch p t0 a -> Branch p t1 a -> Bool
     --     eqBranch (Branch pred body) (Branch pred' body') =
     --         pred == pred' && body == body' && isJust (eqT @t0 @t1)
-    -- Sym s == Sym s' = s == s'
+    Sym s == Sym s' = s == s'
 
     -- Function calls are never equal for now
     Call{} == Call{} = False
@@ -232,7 +233,7 @@ te (NGSig _ e)     = Sig <$> (te e)
 te (NGNeg _ e)     = Neg <$> (te e)
 te (NGAbs _ e)     = Abs <$> (te e)
 te (NGGt _ e1 e2)  = Gt <$> (te e1) <*> (te e2)
--- te (NGSym _ sid) = pure $ Sym sid
+te (NGSym _ sid) = pure $ Sym sid
 te (NGCaseOf
     _
     (scrut    :: Core.Scrut (p, NormP) scrutTy)
