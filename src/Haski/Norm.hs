@@ -38,8 +38,9 @@ type instance ArgGt  NormP = ()
 type instance ArgFby NormP = TypeError (Invalid "NA" "Fby")
 type instance ArgMrg NormP = TypeError (Invalid "NA" "Merge")
 -- TODO: I don't know how this is mean to work; use placeholders for now:
+-- hopefully this works and is unrelated to synchonous business
 type instance ArgCaseOf NormP = ()
-type instance ArgSym NormP = ()
+-- type instance ArgSym NormP = ()
 
 
 -- normal control expressions
@@ -118,7 +119,7 @@ pattern NGGt :: () => (a ~ Bool) => ArgGt p -> NGExp p Int -> NGExp p Int -> NGE
 pattern NGGt ann e1 e2 = GGt (ann,()) e1 e2
 
 pattern NGCaseOf ann scrut branches = GCaseOf (ann, ()) scrut branches
-pattern NGSym ann sid = GSym (ann, ()) sid
+-- pattern NGSym ann sid = GSym (ann, ()) sid
 
 -- normalize control expressions
 normCA :: forall p q a . (AllEq p q) => GExp p a -> Norm p (NCA p a)
@@ -178,13 +179,6 @@ normE (GCaseOf ann scrut branches) = do
     branches' <- mapM normBranch branches
     return $ NGCaseOf ann scrut' branches'
   where
-    -- TODO: What does AllEq p q do, since we don't use q? I assume it says
-    --       something like:
-    --          * ArgVal p is equivalent to a
-    --          * ArgVar p is equivalent to a
-    --          * ...
-    --          * Since all the above types are equivalent to a, they are
-    --          * all equivalent to each other!
     normScrut :: (AllEq p q) => Scrut p a -> Norm p (Scrut (p, NormP) a)
     normScrut a@(Scrut e sid) = do
         e' <- normE e
@@ -195,7 +189,7 @@ normE (GCaseOf ann scrut branches) = do
         scrut' <- normE scrut
         branches' <- normE branches
         return $ Branch scrut' branches'
-normE (GSym ann sid) = return (NGSym ann sid)
+-- normE (GSym ann sid) = return (NGSym ann sid)
 
 
 -- normalize a definition (monadic result)

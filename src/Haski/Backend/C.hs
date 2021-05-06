@@ -1,3 +1,4 @@
+-- TODO: Need a primer on how the code is generated :D
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 
@@ -169,7 +170,6 @@ genCStmt (OBC.CallStep x obj args) =
     Expr $ (Ident $ getName x) .= (Funcall (Ident (objType obj ++ "_step")) $
         (Ident "self" .-> (getName obj))
             : map (extract genCExpr) args)
-
 
 class FromVar b where
     fromVar :: LT a => Var a -> b

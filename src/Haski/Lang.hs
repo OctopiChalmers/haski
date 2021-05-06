@@ -8,6 +8,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TupleSections #-}
 
 module Haski.Lang (
     -- Basic Combinators
@@ -105,12 +106,14 @@ class Partition a t where
 caseof :: forall t a b . (Partition a t, LT a, LT b, Typeable t)
     => Stream a
     -> (t -> Stream b)
-    -> Stream b
-caseof scrut f =
-    let scrutId = "SCRUTNAME"  -- placeholder
-        branches = map ($ Sym scrutId) (partition @a @t)
-        exp = CaseOf (Scrut scrut scrutId) (map mkBranch branches)
-    in exp
+    -> Haski (Stream b)
+caseof scrut f = do
+    -- TODO Merge usage of exiting GVar so we can freeride on its clock
+    -- inference implementaiton (same for Norm etc.)
+    scrutId <- freshName "SCRUTID"
+    let scrutVar = Var $ MkVar (scrutId, Nothing)
+    let branches = map ($ scrutVar) (partition @a @t)
+    pure $ CaseOf (Scrut scrut scrutId) (map mkBranch branches)
   where
     mkBranch :: (Stream Bool, t) -> Branch RawP t b
     mkBranch (pred, t) = Branch pred (f t)

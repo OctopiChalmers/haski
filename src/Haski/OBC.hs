@@ -86,7 +86,7 @@ data Exp p a where
         => Scrut p a
         -> [Branch p t b]
         -> Exp p b
-    Sym :: ScrutId -> Exp p a
+    -- Sym :: ScrutId -> Exp p a
 
 deriving instance Eq (Var a)
 deriving instance Ord (Var a)
@@ -107,6 +107,7 @@ instance Eq a => Eq (Exp p a) where
 
     -- TODO: Just say that CaseOfs are never equal for now, until I can figure
     --       the types out.
+    CaseOf{} == CaseOf{} = False
     -- CaseOf (s :: Scrut p x) bs == CaseOf (s' :: Scrut p y) bs' =
     --     isJust (eqT @x @y) && and (zipWith eqBranch bs bs')
     --   where
@@ -114,7 +115,7 @@ instance Eq a => Eq (Exp p a) where
     --         => Branch p t0 a -> Branch p t1 a -> Bool
     --     eqBranch (Branch pred body) (Branch pred' body') =
     --         pred == pred' && body == body' && isJust (eqT @t0 @t1)
-    Sym s == Sym s' = s == s'
+    -- Sym s == Sym s' = s == s'
     _ == _ = False
 
 -- These are basically copies of types from "Haski.Core", but contains 'Exp'
@@ -171,6 +172,7 @@ type Gen p = State (GenSt p)
 
 instance Plant (GenSt p) Seed where
     plant seed = modify (\s -> s {seed = seed})
+    -- lol ^
 
 instance Plant (GenSt p) [Ex Field] where
     plant fields = modify (\s -> s {fields = fields})
@@ -225,7 +227,7 @@ te (NGCaseOf _ scrut branches) = do
         pred' <- te pred
         body' <- te body
         pure $ Branch pred' body'
-te (NGSym _ sid) = pure $ Sym sid
+-- te (NGSym _ sid) = pure $ Sym sid
 
 -- translates control expressions to statements
 tca :: LT a => Var a -> NCA p a -> Gen p (Stmt p)

@@ -46,7 +46,7 @@ type instance ArgSig ClockP = Clock
 type instance ArgNeg ClockP = Clock
 type instance ArgGt  ClockP = Clock
 type instance ArgCaseOf ClockP = Clock
-type instance ArgSym ClockP = Clock
+-- type instance ArgSym ClockP = Clock
 
 pattern CVal :: () => (LT a)
     => Clock -> a -> GExp ClockP a
@@ -219,25 +219,33 @@ inferClock (GGt ann e1 e2) = do
     e1' <- checkClock e1 a
     e2' <- checkClock e2 a
     return (GGt (ann,a) e1' e2')
+
+-- Instead of figuring out the correct clocks, we can be naive;
+-- make sure everything is on the same clock (be conservative).
+-- Let us make it so everything is on the same clock (branch, scrut);
+-- pass the freshTyVar around:
 inferClock (GCaseOf ann scrut branches) = do
-    a <- freshTyVar
-    scrut' <- inferClockScrut scrut
-    branches' <- mapM inferClockBranch branches
-    return (GCaseOf (ann, a) scrut' branches')
+    ckTy <- freshTyVar
+    scrut' <- inferClockScrut ckTy scrut
+    branches' <- mapM (inferClockBranch ckTy) branches
+    return (GCaseOf (ann, ckTy) scrut' branches')
   where
-    inferClockScrut :: Scrut p e -> Infer (Scrut (p, CkTy) e)
-    inferClockScrut (Scrut scrutE sid) = do
-        a <- freshTyVar
-        scrutE' <- checkClock scrutE a
+    inferClockScrut :: CkTy -> Scrut p e -> Infer (Scrut (p, CkTy) e)
+    inferClockScrut ckty (Scrut scrutE sid) = do
+        scrutE' <- checkClock scrutE ckty
         pure $ Scrut scrutE' sid
 
-    inferClockBranch :: Branch p t b -> Infer (Branch (p, CkTy) t b)
-    inferClockBranch (Branch predE bodyE) = do
-        a <- freshTyVar
-        predE' <- checkClock predE a
-        bodyE' <- checkClock bodyE a
+    inferClockBranch :: CkTy -> Branch p t b -> Infer (Branch (p, CkTy) t b)
+    inferClockBranch ckty (Branch predE bodyE) = do
+        predE' <- checkClock predE ckty
+        bodyE' <- checkClock bodyE ckty
         pure $ Branch predE' bodyE'
-inferClock (GSym ann sid) = (\ a -> GSym (ann, a) sid) <$> freshTyVar
+
+-- TODO: consider if we can piggyback on GVar if we use GVar instead of GSym
+-- inferClock (GSym ann sid) = do -- (\ a -> GSym (ann, a) sid) <$> freshTyVar
+--     undefined
+--     -- a <- lookupEnv x
+--     -- return (GVar (ann,a) x)
 
 -- Check that an expression has a given clock
 checkClock :: GExp p a -> CkTy -> Infer (CtGExp p a)
@@ -375,7 +383,7 @@ type instance ArgSig CkTy = CkTy
 type instance ArgNeg CkTy = CkTy
 type instance ArgGt  CkTy = CkTy
 type instance ArgCaseOf CkTy = CkTy
-type instance ArgSym CkTy = CkTy
+-- type instance ArgSym CkTy = CkTy
 
 instance Eq CkTy where
     BaseTy == BaseTy
