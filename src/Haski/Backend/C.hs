@@ -6,7 +6,7 @@ module Haski.Backend.C where
 
 import Text.PrettyPrint.HughesPJClass (Pretty(..))
 
-import Haski.OBC
+import Haski.OBC (Class(..), Field(..), Obj(..), Step(..) )
 import qualified Haski.OBC as OBC
 import Haski.Type
 import Haski.Util
@@ -78,7 +78,7 @@ genStepFun name (Step params (res :: OBC.Exp p a) body) =
         stepParams  = map (extract $ fromVar @Param) params
         funBody     = map genCStmt body ++ [returnExpr]
         returnExpr  = Return (Just $ genCExpr res)
-        localDeclns = map (extract $ fromVar @Decln) (localVars body)
+        localDeclns = map (extract $ fromVar @Decln) (OBC.localVars body)
 
         -- types
         resType       = Type (cType @a)
@@ -160,7 +160,7 @@ genCStmt (OBC.Skip) =
     skipC
 genCStmt (OBC.Seq s1 s2) =
     seqStmtC  [genCStmt s1, genCStmt s2]
-genCStmt (OBC.Case (scrut :: Exp p (BFin n b)) branches) =
+genCStmt (OBC.Case (scrut :: OBC.Exp p (BFin n b)) branches) =
     caseC @n @b (genCExpr scrut) (fmap genCStmt branches)
 genCStmt (OBC.CallReset obj) =
     -- classname_reset(self->objname)
