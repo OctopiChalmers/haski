@@ -8,6 +8,8 @@ module Haski.Backend.C where
 import Data.Proxy (Proxy(..))
 import Text.PrettyPrint.HughesPJClass (Pretty(..))
 
+import qualified Data.Map.Strict as M
+
 import Haski.OBC (Class(..), Field(..), Obj(..), Step(..) )
 import qualified Haski.OBC as OBC
 import Haski.Type
@@ -54,7 +56,7 @@ compilePlusCaseOfDefs (cs, defs) =
     cClasses = foldr1 joinCTransUnit . map cTransUnitFromClass
 
     caseOfDefs :: [C.FunDef]
-    caseOfDefs = map cCaseOfDef defs
+    caseOfDefs = concatMap cCaseOfDefs defs
 
 cTransUnitFromClass :: Class p -> C.TransUnit
 cTransUnitFromClass (Class name fields instances reset step) =
@@ -70,12 +72,25 @@ joinCTransUnit (TransUnit decls1 defs1) (TransUnit decls2 defs2) =
 
 -- | Compile an OBC representation of a pattern matching function into the
 -- C99.Simple AST representation.
-cCaseOfDef :: OBC.CaseOfDef p -> C.FunDef
-cCaseOfDef m = traceShow m $ undefined
+cCaseOfDefs :: OBC.CaseOfDef p -> [C.FunDef]
+cCaseOfDefs = map (uncurry cCaseOfDef) . M.assocs
+
+cCaseOfDef :: String -> OBC.CaseDef p -> C.FunDef
+cCaseOfDef
+    funName
+    (OBC.CaseDef (Proxy :: Proxy argTy) (Proxy :: Proxy retTy) stmts) =
+        -- FunDef Type Ident ([Param]) ([Decln]) ([Stmt])
+        FunDef (cType @retTy) funName params [] statements
+  where
+    params :: [Param]
+    params = [Param (cType @argTy) "ARGUMENT"]
+
+    statements :: [Stmt]
+    statements = map genCStmt stmts
 
 -- for debugging only
 instance Show (OBC.CaseDef p) where
-    show (OBC.CaseDef (Proxy :: Proxy argTy) stmts) =
+    show (OBC.CaseDef (Proxy :: Proxy argTy) (Proxy :: Proxy retTy) stmts) =
         "argTy: " ++ show (cType @argTy)
 
 -- for debugging only
@@ -211,6 +226,8 @@ genCStmt (OBC.CallStep x obj args) =
     Expr $ (Ident $ getName x) .= (Funcall (Ident (objType obj ++ "_step")) $
         (Ident "self" .-> (getName obj))
             : map (extract genCExpr) args)
+genCStmt (OBC.If cond stmts) = If (genCExpr cond) (map genCStmt stmts)
+genCStmt (OBC.Return retExp) = Return $ Just $ genCExpr retExp
 
 class FromVar b where
     fromVar :: LT a => Var a -> b

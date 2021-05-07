@@ -58,7 +58,8 @@ data Step p where
         -> Step p
 
 -- | Function definition for handling the logic of a pattern match.
-data CaseDef p = forall argTy . (LT argTy) => CaseDef (Proxy argTy) [Stmt p]
+data CaseDef p = forall argTy retTy . (LT argTy, LT retTy)
+    => CaseDef (Proxy argTy) (Proxy retTy) [Stmt p]
 
 data Stmt p where
     Let     :: LT a => Var a -> Exp p a -> Stmt p
@@ -76,7 +77,6 @@ data Stmt p where
         -> [Ex (Exp p)] -- | arguments
         -> Stmt p
 
-    Decl   :: LT a => Var a -> Stmt p
     If     :: Exp p Bool -> [Stmt p] -> Stmt p
     Return :: Exp p a -> Stmt p
 
@@ -263,13 +263,13 @@ te (NGCaseOf
         ifs <- mapM (mkIf retVar) bs
 
         let funBody = ifs
-        pure (funName, CaseDef (Proxy @scrutTy) ifs)
+        pure (funName, CaseDef (Proxy @scrutTy) (Proxy @a) funBody)
 
     mkIf retVar (Core.Branch cond body) = do
         cond' <- te cond
         body' <- te body
 
-        pure $ If cond' [Let retVar body']
+        pure $ If cond' [Return body']
 
 
 -- translates control expressions to statements
