@@ -101,8 +101,8 @@ data Exp p a where
     --     -> Exp p b
     Sym :: ScrutId -> Exp p a
 
-    -- Function call (argument and function name).
-    Call :: Exp p a -> String -> Exp p b
+    -- Function call to pattern matching function (argument and function name).
+    CaseOfCall :: Exp p a -> String -> Exp p b
 
 deriving instance Eq (Var a)
 deriving instance Ord (Var a)
@@ -135,7 +135,7 @@ instance Eq a => Eq (Exp p a) where
     Sym s == Sym s' = s == s'
 
     -- Function calls are never equal for now
-    Call{} == Call{} = False
+    CaseOfCall{} == CaseOfCall{} = False
     _ == _ = False
 
 -- These are basically copies of types from "Haski.Core", but contains 'Exp'
@@ -252,7 +252,7 @@ te (NGCaseOf
         -- call to the pattern matching function.
         let Core.Scrut e sid = scrut
         e' <- te e
-        let funCall = Call e' funName
+        let funCall = CaseOfCall e' funName
 
         pure funCall
   where
