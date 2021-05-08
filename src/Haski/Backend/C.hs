@@ -3,6 +3,13 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE StandaloneDeriving #-}
 
+{- | C-backend code generation.
+
+Note that the CaseOf-style pattern matching implementation (not the one using
+Merge) is hacky as all hell, and its generated function calls make some bold
+assumptions about variables being in scope at the call site.
+-}
+
 module Haski.Backend.C where
 
 import Data.Foldable (Foldable(fold))
@@ -53,7 +60,7 @@ instance Monoid TransUnit where
 
 -- Ignoring the use of the Backend interface here, since it doesn't quite
 -- do what we want.
-compilePlusCaseOfDefs :: ([Class p], [OBC.CaseOfDef p1]) -> C99.AST.TransUnit
+compilePlusCaseOfDefs :: ([Class p], [OBC.CaseOfDefs p1]) -> C99.AST.TransUnit
 compilePlusCaseOfDefs (cs, defs) = flip St.evalState initState $ do
     TransUnit ds fs <- fold <$> mapM cTransUnitFromClass cs
     caseOfDefs <- concat <$> mapM cCaseOfDefs defs
@@ -63,8 +70,11 @@ compilePlusCaseOfDefs (cs, defs) = flip St.evalState initState $ do
   where
     initState :: Cst
     initState = Cst
-        { cstGlobals = []
+        { cstGlobals = M.empty
         }
+
+    mkVarDecln :: (C.Ident, C.Type) -> Decln
+    mkVarDecln (i, t) = C.VarDecln Nothing t i Nothing
 
 cTransUnitFromClass :: Class p -> Compile TransUnit
 cTransUnitFromClass (Class name fields instances reset step) = do
@@ -76,31 +86,25 @@ cTransUnitFromClass (Class name fields instances reset step) = do
 
 -- | Compile an OBC representation of a pattern matching function into the
 -- C99.Simple AST representation.
-cCaseOfDefs :: OBC.CaseOfDef p -> Compile [C.FunDef]
+cCaseOfDefs :: OBC.CaseOfDefs p -> Compile [C.FunDef]
 cCaseOfDefs = mapM (uncurry cCaseOfDef) . M.assocs
 
 cCaseOfDef :: String -> OBC.CaseDef p -> Compile C.FunDef
 cCaseOfDef
     funName
-    (OBC.CaseDef (Proxy :: Proxy argTy) (Proxy :: Proxy retTy) stmts)
+    (OBC.CaseDef (Proxy :: Proxy retTy) obcParams stmts)
   = do
     stmts' <- mapM genCStmt stmts
-    pure $ FunDef (cType @retTy) funName params [] stmts'
+    pure $ FunDef (cType @retTy) funName (map tlParam obcParams) [] stmts'
   where
-    params :: [Param]
-    params = [Param (cType @argTy) "ARG"]
-
--- | Compilation state.
-newtype Cst = Cst
-    { cstGlobals :: [GlobalVar]
-    }
-type Compile = St.State Cst
-data GlobalVar = forall a . LT a => Global String
+    tlParam :: OBC.Param -> Param
+    tlParam (OBC.Param (var :: Var a)) = Param (cType @a) (getName var)
 
 -- for debugging only
 instance Show (OBC.CaseDef p) where
-    show (OBC.CaseDef (Proxy :: Proxy argTy) (Proxy :: Proxy retTy) stmts) =
-        "argTy: " ++ show (cType @argTy)
+    show (OBC.CaseDef (Proxy :: Proxy retTy) obcParams stmts) =
+        undefined
+        -- "argTy: " ++ show (cType @argTy)
 
 -- for debugging only
 deriving instance Show C.Type
@@ -202,7 +206,10 @@ genCExpr (OBC.Sig e)     = signumC <$> genCExpr e
 genCExpr (OBC.Abs e)     = absC <$> genCExpr e
 genCExpr (OBC.Gt e1 e2)  = (.>) <$> genCExpr e1 <*> genCExpr e2
 genCExpr (OBC.Sym sid)   = pure $ Ident sid
-genCExpr (OBC.CaseOfCall e f) = genCExpr e <&> (\ ce -> Funcall (Ident f) [ce])
+genCExpr (OBC.CaseOfCall e f inScopeVars) = do
+    e' <- genCExpr e
+    let args = e' : map (\ (OBC.Param var) -> Ident $ getName var) inScopeVars
+    pure $ Funcall (Ident f) args
 
 caseC :: forall n b . RecEnumerable n b => C.Expr -> V.Vec n C.Stmt -> C.Stmt
 caseC scrut = Switch scrut . V.toList . V.zipWith mkCase (enumerate @n @(BFin n b))
@@ -251,3 +258,15 @@ instance FromVar Param where
 
 instance FromVar Decln where
     fromVar (x :: Var a) = VarDecln Nothing (cType @a) (getName x) Nothing
+
+
+--
+-- * Functions related to the compilation state
+--
+
+-- | Compilation state.
+newtype Cst = Cst
+    { cstGlobals :: M.Map C.Ident C.Type
+    -- ^ Global variables and their types, accumulated during code generation.
+    }
+type Compile = St.State Cst

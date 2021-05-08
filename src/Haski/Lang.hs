@@ -109,7 +109,7 @@ caseof :: forall t a b . (Partition a t, LT a, LT b, Typeable t)
 caseof scrut f = do
     -- TODO Merge usage of exiting GVar so we can freeride on its clock
     -- inference implementaiton (same for Norm etc.)
-    scrutId <- freshName "SCRUTID"
+    let scrutId = "__ARGUMENT"
     -- let scrutVar = Var $ MkVar (scrutId, Nothing)
     let scrutVar = Sym scrutId
     let branches = map ($ scrutVar) (partition @a @t)

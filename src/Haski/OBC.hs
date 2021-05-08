@@ -1,11 +1,12 @@
 -- TODO: Clean up stuff from the CaseOf addition (imports etc.)
 
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TupleSections #-}
 
 module Haski.OBC where
@@ -22,13 +23,14 @@ import Haski.Enum
 import Haski.Fin
 import Haski.Clock (Clock(..),ClockP)
 
-import Data.Typeable (Typeable, eqT)
+import Data.Bifunctor (second)
 import Data.Coerce (coerce)
-import Data.Foldable (foldrM)
+import Data.Foldable (foldrM, fold)
 import Data.Maybe (isJust)
 import Data.Proxy (Proxy(..))
-import qualified Data.Set as S
+import Data.Typeable (Typeable, eqT)
 import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 
 import Control.Monad.Reader hiding (join)
 import Control.Monad.State.Lazy (State, StateT, get, runState, execState, modify, modify')
@@ -58,8 +60,10 @@ data Step p where
         -> Step p
 
 -- | Function definition for handling the logic of a pattern match.
-data CaseDef p = forall argTy retTy . (LT argTy, LT retTy)
-    => CaseDef (Proxy argTy) (Proxy retTy) [Stmt p]
+data CaseDef p = forall retTy . (LT retTy) => CaseDef
+    (Proxy retTy)  -- ^ Return type
+    [Param]        -- ^ Function params
+    [Stmt p]       -- ^ Function body
 
 data Stmt p where
     Let     :: LT a => Var a -> Exp p a -> Stmt p
@@ -82,7 +86,7 @@ data Stmt p where
 
 data Exp p a where
     -- "simple" variable
-    Var :: Var a -> Exp p a        -- "simple" variable
+    Var :: Var a -> Exp p a
     -- reference variable (`Ref x` represents "store(x)")
     Ref :: Var a -> Exp p a
     Val :: LT a => a -> Exp p a
@@ -93,16 +97,14 @@ data Exp p a where
     Abs :: Exp p a -> Exp p a
     Gt  :: Exp p Int -> Exp p Int -> Exp p Bool
 
-    -- TODO: Define this differently so that we can avoid the awful equality
-    --       definition?
-    -- CaseOf :: ()
-    --     => Scrut p a
-    --     -> [Branch p t b]
-    --     -> Exp p b
-    Sym :: ScrutId -> Exp p a
-
     -- Function call to pattern matching function (argument and function name).
-    CaseOfCall :: Exp p a -> String -> Exp p b
+    CaseOfCall :: (LT a, LT b)
+        => Exp p a  -- ^ Scrutinee expression
+        -> String   -- ^ Function name
+        -> [Param]  -- ^ Other function arguments. These are variables which
+                    --   are expected to be in scope at the call site.
+        -> Exp p b
+    Sym :: ScrutId -> Exp p a
 
 deriving instance Eq (Var a)
 deriving instance Ord (Var a)
@@ -121,21 +123,10 @@ instance Eq a => Eq (Exp p a) where
     Neg e     == Neg e'      = e == e'
     Abs e     == Abs e'      = e == e'
     Gt n1 n2  == Gt m1 m2    = n1 == m1 && n2 == m2
-
-    -- TODO: Just say that CaseOfs are never equal for now, until I can figure
-    --       the types out.
-    -- CaseOf{} == CaseOf{} = False
-    -- CaseOf (s :: Scrut p x) bs == CaseOf (s' :: Scrut p y) bs' =
-    --     isJust (eqT @x @y) && and (zipWith eqBranch bs bs')
-    --   where
-    --     eqBranch :: forall p t0 t1 a . (Typeable t0, Typeable t1, Eq a)
-    --         => Branch p t0 a -> Branch p t1 a -> Bool
-    --     eqBranch (Branch pred body) (Branch pred' body') =
-    --         pred == pred' && body == body' && isJust (eqT @t0 @t1)
-    Sym s == Sym s' = s == s'
-
-    -- Function calls are never equal for now
+    -- Function calls to pattern matching functions are never equal for now
     CaseOfCall{} == CaseOfCall{} = False
+    Sym s     == Sym s'      = s == s'
+
     _ == _ = False
 
 -- These are basically copies of types from "Haski.Core", but contains 'Exp'
@@ -181,7 +172,7 @@ joinList []       = Skip
 joinList [ s ]    = s
 joinList (s : ss) = join s (joinList ss)
 
-type CaseOfDef p = M.Map String (CaseDef p)
+type CaseOfDefs p = M.Map String (CaseDef p)
 
 data GenSt p = GenSt
     { fields  :: [Ex Field]
@@ -189,7 +180,7 @@ data GenSt p = GenSt
     , reset   :: [Stmt p]
     , seed    :: Seed
 
-    , funDefs :: CaseOfDef p
+    , funDefs :: CaseOfDefs p
     -- ^ Function definitions used to handle pattern matching logic. These are
     -- generated during translation of expressions. The mapping is from the
     -- name of the function to its definition
@@ -243,34 +234,68 @@ te (NGCaseOf
     = do
         -- Generate the definition of the pattern matching function and add
         -- it to the compilation state.
-        (funName, def) <- newCaseDef branches
-        modify $ \ st ->
-            let defs = funDefs st
-            in st { funDefs = M.insert funName def defs }
+        (funName, def, inScopeVars) <- newCaseDef branches
+        modify $ \ st -> st { funDefs = M.insert funName def (funDefs st) }
 
         -- Translate the scrutinee expression, it will be the argument to the
         -- call to the pattern matching function.
         let Core.Scrut e sid = scrut
         e' <- te e
-        let funCall = CaseOfCall e' funName
+        let funCall = CaseOfCall e' funName inScopeVars
 
         pure funCall
   where
+    newCaseDef :: [Core.Branch (p, NormP) b] -> Gen p (String, CaseDef p, [Param])
     newCaseDef bs = do
         funName <- freshName "fun"
+        let scrutParam = Param $ Core.MkVar @scrutTy ("__ARGUMENT", Nothing)
 
         retVar <- Core.MkVar . (, Nothing) <$> freshName "retVar"
-        ifs <- mapM (mkIf retVar) bs
-
+        (ifs, vars) <- unzip <$> mapM (mkIf retVar) bs
+        let inScopeVars = S.elems (S.unions vars)
         let funBody = ifs
-        pure (funName, CaseDef (Proxy @scrutTy) (Proxy @a) funBody)
+        pure ( funName
+             , CaseDef (Proxy @a) (scrutParam : inScopeVars) funBody
+             , inScopeVars
+             )
 
+    mkIf :: Var a -> Core.Branch (p, NormP) b -> Gen p (Stmt p, S.Set Param)
     mkIf retVar (Core.Branch cond body) = do
         cond' <- te cond
         body' <- te body
 
-        pure $ If cond' [Return body']
+        -- Find all variables used inside the function body so we can provide
+        -- the caller with the correct arguments.
+        let vars = collectVars body'
 
+        pure (If cond' [Return body'], vars)
+
+    collectVars :: forall p b . LT b => Exp p b -> S.Set Param
+    collectVars = go S.empty
+      where
+        go :: LT c => S.Set Param -> Exp p c -> S.Set Param
+        go vars = \case
+            Var v   -> Param v `S.insert` vars
+            -- Ref v might be questionable
+            Ref v   -> Param v `S.insert` vars
+            Add x y -> go (go vars x) y
+            Mul x y -> go (go vars x) y
+            Sig e   -> go vars e
+            Neg e   -> go vars e
+            Abs e   -> go vars e
+            Gt  x y -> go (go vars x) y
+            CaseOfCall e _ _ -> go vars e
+            Val{}   -> vars
+            Sym{}   -> vars
+
+-- Used for heterogeneous list of function parameters.
+data Param = forall a . LT a => Param (Var a)
+
+instance Eq Param where
+    Param (Core.MkVar x) == Param (Core.MkVar y) = x == y
+
+instance Ord Param where
+    Param (Core.MkVar x) <= Param (Core.MkVar y) = x <= y
 
 -- translates control expressions to statements
 tca :: LT a => Var a -> NCA p a -> Gen p (Stmt p)
@@ -311,8 +336,8 @@ teqlist :: [CEQ p] -> CGen p [CStmt p]
 teqlist eqs = foldrM go [] eqs
     where go eq accStmt = flip (:) accStmt <$> teq eq
 
-tpN :: CEQNode p -> Seed -> ((CClass p, CaseOfDef (p, ClockP)), Seed)
-tpN (EQNode name args eqs res) sd = ((clas, funDefs resSt), seed resSt)
+tpN :: CEQNode p -> Seed -> ((CClass p, CaseOfDefs (p, ClockP)), Seed)
+tpN (EQNode name args eqs res) sd = ((clas, caseOfDefs), seed resSt)
     where
         -- build translation computation
         transM = (,) <$> teqlist eqs <*> te res
@@ -324,6 +349,9 @@ tpN (EQNode name args eqs res) sd = ((clas, funDefs resSt), seed resSt)
         clas = Class name
                     (fields resSt) (objs resSt)
                     (reset resSt) step
+
+        -- Stuff needed to generate code for pattern matching functions.
+        caseOfDefs = funDefs resSt
 
 translateNode = tpN
 
