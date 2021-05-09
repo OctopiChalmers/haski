@@ -17,8 +17,8 @@ alter s = s `caseof` \case
 data T = T1 (Stream Int) | T2
 instance Partition Int T where
     partition =
-        [ \ v -> (v `gtE` 3, T1 v)
-        , \ v -> (val True, T2)
+        [ \ v -> (v `gtE` 3, pure $ T1 v)
+        , \ v -> (val True, pure T2)
         ]
 
 nats :: Haski (Stream Int)
@@ -26,12 +26,13 @@ nats = mdo
     n <- 0 `fby` (1 + n)
     return n
 
-mainpm :: Stream Int -> Haski (Stream Int)
-mainpm = node "mainpm" $ \ ns -> mdo
+pmnode :: Stream Int -> Haski (Stream Int)
+pmnode = node "pmnode" $ \ ns -> mdo
     -- numbers <- nats
     -- let altered = alter numbers
     alter ns
 
+testProg = nats >>= pmnode
 
 -- counting :: Stream Bool -> Stream Bool -> Haski (Stream Int)
 -- counting = node "counting" $ \ tick top -> mdo

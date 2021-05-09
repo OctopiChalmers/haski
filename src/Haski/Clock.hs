@@ -49,6 +49,7 @@ type instance ArgNeg ClockP = Clock
 type instance ArgGt  ClockP = Clock
 type instance ArgCaseOf ClockP = Clock
 type instance ArgSym ClockP = Clock
+type instance ArgFieldVar ClockP = Clock
 
 pattern CVal :: () => (LT a)
     => Clock -> a -> GExp ClockP a
@@ -242,10 +243,11 @@ inferClock (GCaseOf ann scrut branches) = do
         predE' <- checkClock predE ckty
         bodyE' <- checkClock bodyE ckty
         pure $ Branch predE' bodyE'
-
--- TODO: consider if we can piggyback on GVar if we use GVar instead of GSym
--- For now, just use whatever
 inferClock (GSym ann sid) = (\ a -> GSym (ann, a) sid) <$> freshTyVar
+inferClock (GFieldVar ann tag e) = do
+    a <- freshTyVar
+    e' <- checkClock e a
+    return $ GFieldVar (ann, a) tag e'
 
 -- Check that an expression has a given clock
 checkClock :: GExp p a -> CkTy -> Infer (CtGExp p a)
@@ -384,6 +386,7 @@ type instance ArgNeg CkTy = CkTy
 type instance ArgGt  CkTy = CkTy
 type instance ArgCaseOf CkTy = CkTy
 type instance ArgSym CkTy = CkTy
+type instance ArgFieldVar CkTy = CkTy
 
 instance Eq CkTy where
     BaseTy == BaseTy

@@ -6,6 +6,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Haski.Lang (
@@ -94,27 +95,23 @@ import Text.PrettyPrint.HughesPJClass hiding (prettyShow)
 ----------------------------
 
 class Partition a t where
-    -- TODO: from 't' to 'Haski t'
-    partition :: [Stream a -> (Stream Bool, t)]
+    partition :: [Stream a -> (Stream Bool, Haski t)]
 
--- TODO: Currently lacks
--- * Unique variable generation (so we can have nested cases if necessary)
--- * The stuff to avoid redundant output code when referencing pattern
---   variables multiple times (leading to the expressions returned by
---   'partition' appearing multiple times as well.)
 caseof :: forall t a b . (Partition a t, LT a, LT b, Typeable t)
     => Stream a
     -> (t -> Stream b)
     -> Haski (Stream b)
 caseof scrut f = do
-    -- TODO Merge usage of exiting GVar so we can freeride on its clock
-    -- inference implementaiton (same for Norm etc.)
     let scrutId = "__ARGUMENT"
-    -- let scrutVar = Var $ MkVar (scrutId, Nothing)
     let scrutVar = Sym scrutId
     let branches = map ($ scrutVar) (partition @a @t)
-    pure $ CaseOf (Scrut scrut scrutId) (map mkBranch branches)
+    taggedBranches <- mapM computeTag branches
+
+    pure $ CaseOf (Scrut scrut scrutId) (map mkBranch taggedBranches)
   where
+    computeTag :: (Stream Bool, Haski t) -> Haski (Stream Bool, t)
+    computeTag (cond, adt) = (cond, ) <$> adt
+
     mkBranch :: (Stream Bool, t) -> Branch RawP b
     mkBranch (pred, t) = Branch pred (f t)
 

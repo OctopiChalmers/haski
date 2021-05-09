@@ -41,6 +41,7 @@ type instance ArgMrg NormP = TypeError (Invalid "NA" "Merge")
 -- hopefully this works and is unrelated to synchonous business
 type instance ArgCaseOf NormP = ()
 type instance ArgSym NormP = ()
+type instance ArgFieldVar NormP = ()
 
 
 -- normal control expressions
@@ -120,6 +121,7 @@ pattern NGGt ann e1 e2 = GGt (ann,()) e1 e2
 
 pattern NGCaseOf ann scrut branches = GCaseOf (ann, ()) scrut branches
 pattern NGSym ann sid = GSym (ann, ()) sid
+pattern NGFieldVar ann tag e = GFieldVar (ann, ()) tag e
 
 -- normalize control expressions
 normCA :: forall p q a . (AllEq p q) => GExp p a -> Norm p (NCA p a)
@@ -190,6 +192,9 @@ normE (GCaseOf ann scrut branches) = do
         branches' <- normE branches
         return $ Branch scrut' branches'
 normE (GSym ann sid) = return (NGSym ann sid)
+normE (GFieldVar ann tag e) = do
+    e' <- normE e
+    return $ NGFieldVar ann tag e'
 
 
 -- normalize a definition (monadic result)

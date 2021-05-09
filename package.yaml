@@ -27,6 +27,7 @@ dependencies:
 - constraints
 - language-c99-simple
 - language-c99
+- template-haskell
 
 default-extensions:
   - GADTs

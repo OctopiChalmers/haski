@@ -20,6 +20,7 @@ type family ArgNeg p :: *
 type family ArgGt  p :: *
 type family ArgCaseOf p :: *
 type family ArgSym p :: *
+type family ArgFieldVar p :: *
 
 type AllEq p a =
     ((ArgVal p) ~ a, (ArgVar p) ~ a, (ArgFby p) ~ a
@@ -28,6 +29,7 @@ type AllEq p a =
     , (ArgNeg p) ~ a, (ArgGt p) ~ a
     , (ArgCaseOf p) ~ a
     , (ArgSym p) ~ a
+    , (ArgFieldVar p) ~ a
     )
 
 type ForallArg p (c :: * -> Constraint) =
@@ -37,6 +39,7 @@ type ForallArg p (c :: * -> Constraint) =
     , c (ArgNeg p), c (ArgGt p)
     , c (ArgCaseOf p)
     , c (ArgSym p)
+    , c (ArgFieldVar p)
     )
 
 data RawP
@@ -54,6 +57,7 @@ type instance ArgNeg RawP = ()
 type instance ArgGt  RawP = ()
 type instance ArgCaseOf RawP = ()
 type instance ArgSym RawP = ()
+type instance ArgFieldVar RawP = ()
 
 type instance ArgVal (a,b) = (ArgVal a, ArgVal b)
 type instance ArgVar (a,b) = (ArgVar a, ArgVar b)
@@ -68,3 +72,4 @@ type instance ArgNeg (a,b) = (ArgNeg a, ArgNeg b)
 type instance ArgGt  (a,b) = (ArgGt a , ArgGt b)
 type instance ArgCaseOf (a,b) = (ArgCaseOf a , ArgCaseOf b)
 type instance ArgSym (a,b) = (ArgSym a , ArgSym b)
+type instance ArgFieldVar (a,b) = (ArgSym a , ArgSym b)
