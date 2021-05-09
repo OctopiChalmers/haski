@@ -40,8 +40,8 @@ evens = mdo
 
 -- count number of ticks (True values of `tick`)
 -- between two tops (True values of `top`)
-counting :: Stream Bool -> Stream Bool -> Stream Int -> Haski (Stream Int)
-counting = node "counting" $ \ tick top nums -> mdo
+counting :: Stream Bool -> Stream Bool -> Haski (Stream Int)
+counting = node "counting" $ \ tick top -> mdo
     o' <- 0 `fby` o
     o <- tick `match` \case
             True -> v
@@ -49,38 +49,52 @@ counting = node "counting" $ \ tick top nums -> mdo
     v <- top `match` \case
             True -> 1
             False -> 0
-
-    caseof (nums + o) $ \case
-        T1 n -> n + n + n + 1
-        T2   -> v
-    -- return o
+    return o
 
 -- invocation of `counting`
 countingCall :: Haski (Stream Int)
 countingCall = do
     let tick = val True
     top <- alt
-    nums <- nats
-    counting tick top nums
+    counting tick top
 
 
 -- Testing simple CaseOf-style pattern matching stuff
 
 alter :: Stream Int -> Haski (Stream Int)
 alter s = s `caseof` \case
-    T1 n -> n + 1
-    T2   -> s
+    T1 n b -> n + 1
+    T2     -> s
 
-data T = T1 (Stream Int) | T2
+type HELLO = Stream Int
+
+data T = T1 HELLO (Stream Bool) | T2
 $(mkConstructors ''T)
 instance Partition Int T where
     partition =
-        [ \ v -> (v `gtE` 3, _T1 (v * 999))
+        [ \ v -> (v `gtE` 3, _T1 (v * 999) (v `gtE` 100))
         , \ v -> (val True, _T2)
         ]
 
-pmnode :: Stream Int -> Haski (Stream Int)
-pmnode = node "pmnode" $ \ ns -> mdo
-    pure ns
+data WrapInt = WrapInt (Stream Int)
+$(mkConstructors ''WrapInt)
+instance Partition Bool WrapInt where
+    partition =
+        [ \ v -> (v, _WrapInt 100)
+        , \ v -> (ifte v (val False) (val True), _WrapInt 99)
+        ]
 
-testProg = nats >>= pmnode
+pm1 :: Stream Int -> Stream Bool -> Haski (Stream Int)
+pm1 = node "pmnode" $ \ ns bs -> mdo
+    x <- ns `caseof` \case
+        T1 n b -> b
+        T2     -> val False
+    y <- x `caseof` \case
+        WrapInt n -> n
+    return y
+
+pm1call :: Haski (Stream Int)
+pm1call = do
+    ns <- nats
+    bs <- alt
+    pm1 ns bs
