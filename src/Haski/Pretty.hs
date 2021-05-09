@@ -4,6 +4,7 @@
 {-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Haski.Pretty where
 
@@ -59,10 +60,10 @@ pPrintAnn s p | s
 pPrintAnn s p | otherwise
     = empty
 
-pPrintExp :: (ForallArg p Pretty)
+pPrintExp :: forall p a . (ForallArg p Pretty)
     => Bool -> GExp p a -> Doc
 pPrintExp s = goExp
-    where
+  where
     goExp (GVal p x) = pPrint x <+> pPrintAnn s p
     goExp (GVar p x) = text (getName x)
     goExp (GFby p x e) = pPrint x
@@ -102,6 +103,26 @@ pPrintExp s = goExp
     goExp (GNeg p e) = lparen
         <> text "Neg"
         <+> goExp e
+        <> rparen
+    -- These ones below are makeshift
+    goExp (GGt p e1 e2) = lparen
+        <> text "INT > INT"
+        <> rparen
+    goExp (GCaseOf p (Haski.Core.Scrut scrut s) branches) = lparen
+        <> text "SCRUT, BODY: "
+        <+> hcat (map goExpBranch branches)
+        <> rparen
+    goExp (GSym p s) = text s
+    goExp (GFieldExp p name e) = lparen
+        <> text "FieldExp: "
+        <+> goExp e
+        <> rparen
+
+    goExpBranch :: Haski.Core.Branch p a -> Doc
+    goExpBranch (Haski.Core.Branch _cond body) =
+        lparen
+        <> text "CONDITION, "
+        <+> goExp body
         <> rparen
 
 instance {-# OVERLAPPING #-} Pretty (Stream a) where
@@ -234,6 +255,18 @@ instance ForallArg p Pretty => Pretty (OBC.Exp p a) where
         <> lparen
         <> pPrint e
         <> rparen
+    -- These ones below are makeshift
+    pPrint (OBC.Gt e1 e2) = lparen
+        <> pPrint e1
+        <> text ">"
+        <> pPrint e2
+        <> rparen
+    pPrint (OBC.CaseOfCall e funName params) = text funName
+        <> lparen
+        <> pPrint e
+        <> hcat (map (\ (Ex var) -> text $ getName var) params)
+        <> rparen
+    pPrint (OBC.Sym s) = text s
 
 instance ForallArg p Pretty => Pretty (Stmt p) where
     pPrint (OBC.Let x e) = pPrint x <+> char '=' <+> pPrint e
@@ -258,6 +291,12 @@ instance ForallArg p Pretty => Pretty (Stmt p) where
         <> char '.'
         <> text "step"
         <> (pPrintVia @(PList (Ex (OBC.Exp p))) args)
+    pPrint (OBC.If cond stmts) = lparen
+        <> text "if" <> lparen <> pPrint cond <> rparen
+        <> hcat (map pPrint stmts)
+        <> rparen
+    pPrint (OBC.Return e) = text "return" <> lparen <> pPrint e <> rparen
+
 
 pPrintMethod :: forall p a . ForallArg p Pretty
     => Name -> [Ex Var] -> [Stmt p] -> Maybe (OBC.Exp p a) -> Doc
