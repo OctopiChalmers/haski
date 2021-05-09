@@ -56,54 +56,48 @@ instance Semigroup TransUnit where
 instance Monoid TransUnit where
     mempty = TransUnit [] []
 
--- Ignoring the use of the Backend interface here, since it doesn't quite
--- do what we want.
+-- Ignoring the use of the Backend interface here, since its type doesn't quite
+-- fit what we want; we need to send information to the code generator
+-- _besides_ the OBC.Class structures.
 compilePlusCaseOfDefs :: ([Class p], [OBC.CaseOfDefs p1]) -> C99.AST.TransUnit
-compilePlusCaseOfDefs (cs, defs) = flip St.evalState initState $ do
-    TransUnit ds fs <- fold <$> mapM cTransUnitFromClass cs
-    caseOfDefs <- concat <$> mapM cCaseOfDefs defs
-
-    let cUnit = TransUnit ds (fs ++ caseOfDefs)
-    pure $ translate cUnit
+compilePlusCaseOfDefs (cs, defs) =
+    let TransUnit ds fs = foldMap cTransUnitFromClass cs
+        caseOfDefs = concatMap cCaseOfDefs defs
+        cUnit = TransUnit ds (fs ++ caseOfDefs)
+    in translate cUnit
   where
-    initState :: Cst
-    initState = Cst
-        { cstGlobals = M.empty
-        }
-
     mkVarDecln :: (C.Ident, C.Type) -> Decln
     mkVarDecln (i, t) = C.VarDecln Nothing t i Nothing
 
-cTransUnitFromClass :: Class p -> Compile TransUnit
-cTransUnitFromClass (Class name fields instances reset step) = do
-    stepFunDef <- genStepFun name step
-    resetFunDef <- genResetFun name reset
-    pure $ TransUnit [TypeDecln memStruct] [resetFunDef, stepFunDef]
+cTransUnitFromClass :: Class p -> TransUnit
+cTransUnitFromClass (Class name fields instances reset step) =
+    let stepFunDef  = genStepFun name step
+        resetFunDef = genResetFun name reset
+    in TransUnit [TypeDecln memStruct] [resetFunDef, stepFunDef]
   where
     memStruct = genMemStruct name fields instances
 
 -- | Compile an OBC representation of a pattern matching function into the
 -- C99.Simple AST representation.
-cCaseOfDefs :: OBC.CaseOfDefs p -> Compile [C.FunDef]
-cCaseOfDefs = mapM (uncurry cCaseOfDef) . M.assocs
+cCaseOfDefs :: OBC.CaseOfDefs p -> [C.FunDef]
+cCaseOfDefs = map (uncurry cCaseOfDef) . M.assocs
 
-cCaseOfDef :: String -> OBC.CaseDef p -> Compile C.FunDef
+cCaseOfDef :: String -> OBC.CaseDef p -> C.FunDef
 cCaseOfDef
     funName
     (OBC.CaseDef (Proxy :: Proxy retTy) obcParams fieldExps stmts)
-  = do
-    declns <- mapM (uncurry mkDecln) $ M.assocs fieldExps
-    stmts' <- mapM genCStmt stmts
-    pure $ FunDef (cType @retTy) funName (map mkParam obcParams) declns stmts'
+  = let declns = map (uncurry mkDecln) $ M.assocs fieldExps
+        stmts' = map genCStmt stmts
+    in FunDef (cType @retTy) funName (map mkParam obcParams) declns stmts'
   where
     mkParam :: Ex Var -> Param
     mkParam (Ex (var :: Var a)) = Param (cType @a) (getName var)
 
     -- Create a declaration for a named expression.
-    mkDecln :: Name -> Ex (OBC.Exp p) -> Compile Decln
-    mkDecln name (Ex (e :: OBC.Exp p a)) = do
-        ce <- genCExpr e
-        pure $ VarDecln Nothing (cType @a) name (Just (InitExpr ce))
+    mkDecln :: Name -> Ex (OBC.Exp p) -> Decln
+    mkDecln name (Ex (e :: OBC.Exp p a)) =
+        let ce = genCExpr e
+        in VarDecln Nothing (cType @a) name (Just (InitExpr ce))
 
 -- for debugging only
 instance Show (OBC.CaseDef p) where
@@ -124,32 +118,31 @@ deriving instance Show C.FieldDecln
 
 voidC = Type (TypeSpec Void)
 
-genResetFun :: Name -> [OBC.Stmt p] -> Compile FunDef
-genResetFun name body = do
-    -- components of the function
-    let funName     = name ++ "_reset"
-    let selfParam   = Param (Type selfType) "self"
-    funBody <- mapM genCStmt body
-    -- HACK: because the C library doesn't allow empty function body
-    let funBodyHack = if null funBody then [skipC] else funBody
-
-    pure $ FunDef voidC funName [selfParam] [] funBodyHack
+genResetFun :: Name -> [OBC.Stmt p] -> FunDef
+genResetFun name body =
+    let
+        -- components of the function
+        funName   = name ++ "_reset"
+        selfParam = Param (Type selfType) "self"
+        funBody   = map genCStmt body
+        -- HACK: because the C library doesn't allow empty function body
+        funBodyHack = if null funBody then [skipC] else funBody
+    in FunDef voidC funName [selfParam] [] funBodyHack
   where
     -- Types
     selfType :: Type
     selfType = Ptr (TypeSpec $ Struct (name ++ "_mem"))
 
-genStepFun :: Name -> Step p -> Compile FunDef
-genStepFun name (Step params (res :: OBC.Exp p a) body) = do
+genStepFun :: Name -> Step p -> FunDef
+genStepFun name (Step params (res :: OBC.Exp p a) body) =
     -- components of the function
     let funName     = name ++ "_step"
-    let selfParam   = Param (Type selfType) "self"
-    let stepParams  = map (extract $ fromVar @Param) params
-    returnExpr <- Return . Just <$> genCExpr res
-    funBody <- mapM genCStmt body <&> (++ [returnExpr])
-    let localDeclns = map (extract $ fromVar @Decln) (OBC.localVars body)
-
-    pure $ FunDef resType funName (selfParam : stepParams) localDeclns funBody
+        selfParam   = Param (Type selfType) "self"
+        stepParams  = map (extract $ fromVar @Param) params
+        returnExpr  = Return . Just $ genCExpr res
+        funBody     = map genCStmt body ++ [returnExpr]
+        localDeclns = map (extract $ fromVar @Decln) (OBC.localVars body)
+    in FunDef resType funName (selfParam : stepParams) localDeclns funBody
   where
     -- Types
     resType, selfType :: Type
@@ -200,21 +193,21 @@ selfC = Ident "self"
 (.->) :: C.Expr -> Ident -> C.Expr
 (.->) x f = Dot (deref x) f
 
-genCExpr :: OBC.Exp p a -> Compile C.Expr
-genCExpr (OBC.Var x)     = pure $ Ident $ getName x
-genCExpr (OBC.Ref x)     = pure $ selfC .-> getName x
-genCExpr (OBC.Val x)     = pure $ genCVal x
-genCExpr (OBC.Add e1 e2) = (.+) <$> genCExpr e1 <*> genCExpr e2
-genCExpr (OBC.Mul e1 e2) = (.*) <$> genCExpr e1 <*> genCExpr e2
-genCExpr (OBC.Neg e)     = neg <$> genCExpr e
-genCExpr (OBC.Sig e)     = signumC <$> genCExpr e
-genCExpr (OBC.Abs e)     = absC <$> genCExpr e
-genCExpr (OBC.Gt e1 e2)  = (.>) <$> genCExpr e1 <*> genCExpr e2
-genCExpr (OBC.Sym sid)   = pure $ Ident sid
-genCExpr (OBC.CaseOfCall e f inScopeVars) = do
-    e' <- genCExpr e
-    let args = e' : map (\ (Ex var) -> Ident $ getName var) inScopeVars
-    pure $ Funcall (Ident f) args
+genCExpr :: OBC.Exp p a -> C.Expr
+genCExpr (OBC.Var x)     = Ident $ getName x
+genCExpr (OBC.Ref x)     = selfC .-> getName x
+genCExpr (OBC.Val x)     = genCVal x
+genCExpr (OBC.Add e1 e2) = genCExpr e1 .+ genCExpr e2
+genCExpr (OBC.Mul e1 e2) = genCExpr e1 .* genCExpr e2
+genCExpr (OBC.Neg e)     = neg $ genCExpr e
+genCExpr (OBC.Sig e)     = signumC $ genCExpr e
+genCExpr (OBC.Abs e)     = absC $ genCExpr e
+genCExpr (OBC.Gt e1 e2)  = genCExpr e1 .> genCExpr e2
+genCExpr (OBC.Sym sid)   = Ident sid
+genCExpr (OBC.CaseOfCall e f inScopeVars) =
+    let e' = genCExpr e
+        args = e' : map (\ (Ex var) -> Ident $ getName var) inScopeVars
+    in Funcall (Ident f) args
 
 caseC :: forall n b . RecEnumerable n b => C.Expr -> V.Vec n C.Stmt -> C.Stmt
 caseC scrut = Switch scrut . V.toList . V.zipWith mkCase (enumerate @n @(BFin n b))
@@ -228,29 +221,25 @@ seqStmtC stms = If (LitBool True) stms
 skipC :: C.Stmt
 skipC = Expr $ Cast (TypeName (TypeSpec Void)) (LitInt 0)
 
-genCStmt :: OBC.Stmt p -> Compile C.Stmt
-genCStmt (OBC.Let x e) = do
-    e' <- genCExpr e
-    pure $ Expr $ Ident (getName x) .= e'
-genCStmt (OBC.Ass x e) = do
-    e' <- genCExpr e
-    pure $ Expr $ (selfC .-> getName x) .= e'
-genCStmt OBC.Skip = pure skipC
-genCStmt (OBC.Seq s1 s2) = seqStmtC <$> mapM genCStmt [s1, s2]
-genCStmt (OBC.Case (scrut :: OBC.Exp p (BFin n b)) branches) = do
-    scrut' <- genCExpr scrut
-    branches' <- mapM genCStmt branches
-    pure $ caseC @n @b scrut' branches'
+genCStmt :: OBC.Stmt p -> C.Stmt
+genCStmt (OBC.Let x e) = Expr $ Ident (getName x) .= genCExpr e
+genCStmt (OBC.Ass x e) = Expr $ (selfC .-> getName x) .= genCExpr e
+genCStmt OBC.Skip = skipC
+genCStmt (OBC.Seq s1 s2) = seqStmtC $ map genCStmt [s1, s2]
+genCStmt (OBC.Case (scrut :: OBC.Exp p (BFin n b)) branches) =
+    let scrut'    = genCExpr scrut
+        branches' = fmap genCStmt branches
+    in caseC @n @b scrut' branches'
 -- classname_reset(self->objname)
-genCStmt (OBC.CallReset obj) = pure $ Expr
-    $ Funcall (Ident (objType obj ++ "_reset")) [Ident "self" .-> getName obj]
-genCStmt (OBC.CallStep x obj args) = do
-    args' <- mapM (extract genCExpr) args
-    let selfDeref = Ident "self" .-> getName obj : args'
-    let funCall = Funcall (Ident (objType obj ++ "_step")) selfDeref
-    pure $ Expr $ Ident (getName x) .= funCall
-genCStmt (OBC.If cond stmts) = If <$> genCExpr cond <*> mapM genCStmt stmts
-genCStmt (OBC.Return retExp) = Return . Just <$> genCExpr retExp
+genCStmt (OBC.CallReset obj) =
+    Expr $ Funcall (Ident (objType obj ++ "_reset")) [Ident "self" .-> getName obj]
+genCStmt (OBC.CallStep x obj args) =
+    let args'     = map (extract genCExpr) args
+        selfDeref = Ident "self" .-> getName obj : args'
+        funCall   = Funcall (Ident (objType obj ++ "_step")) selfDeref
+    in Expr $ Ident (getName x) .= funCall
+genCStmt (OBC.If cond stmts) = If (genCExpr cond) (map genCStmt stmts)
+genCStmt (OBC.Return retExp) = Return . Just $ genCExpr retExp
 
 class FromVar b where
     fromVar :: LT a => Var a -> b
@@ -263,14 +252,3 @@ instance FromVar Param where
 
 instance FromVar Decln where
     fromVar (x :: Var a) = VarDecln Nothing (cType @a) (getName x) Nothing
-
---
--- Functions related to the compilation state
---
-
--- | Compilation state.
-newtype Cst = Cst
-    { cstGlobals :: M.Map C.Ident C.Type
-    -- ^ Global variables and their types, accumulated during code generation.
-    }
-type Compile = St.State Cst
