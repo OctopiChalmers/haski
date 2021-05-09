@@ -94,10 +94,10 @@ cCaseOfDef
   = do
     declns <- mapM (uncurry mkDecln) $ M.assocs fieldExps
     stmts' <- mapM genCStmt stmts
-    pure $ FunDef (cType @retTy) funName (map tlHVar obcParams) declns stmts'
+    pure $ FunDef (cType @retTy) funName (map mkParam obcParams) declns stmts'
   where
-    tlHVar :: OBC.HVar -> Param
-    tlHVar (OBC.HVar (var :: Var a)) = Param (cType @a) (getName var)
+    mkParam :: Ex Var -> Param
+    mkParam (Ex (var :: Var a)) = Param (cType @a) (getName var)
 
     -- Create a declaration for a named expression.
     mkDecln :: Name -> Ex (OBC.Exp p) -> Compile Decln
@@ -213,7 +213,7 @@ genCExpr (OBC.Gt e1 e2)  = (.>) <$> genCExpr e1 <*> genCExpr e2
 genCExpr (OBC.Sym sid)   = pure $ Ident sid
 genCExpr (OBC.CaseOfCall e f inScopeVars) = do
     e' <- genCExpr e
-    let args = e' : map (\ (OBC.HVar var) -> Ident $ getName var) inScopeVars
+    let args = e' : map (\ (Ex var) -> Ident $ getName var) inScopeVars
     pure $ Funcall (Ident f) args
 
 caseC :: forall n b . RecEnumerable n b => C.Expr -> V.Vec n C.Stmt -> C.Stmt

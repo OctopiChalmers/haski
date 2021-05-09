@@ -66,7 +66,7 @@ data CaseDef p = forall retTy . (LT retTy) => CaseDef
     -- | Return type
     (Proxy retTy)
     -- | Function parameters
-    [HVar]
+    [Ex Var]
     -- | Variable bindings for expressions corresponding to the fields
     -- of Partition ADTs.
     (M.Map Name (Ex (Exp p)))
@@ -110,7 +110,7 @@ data Exp p a where
     CaseOfCall :: (LT a, LT b)
         => Exp p a  -- ^ Scrutinee expression
         -> String   -- ^ Function name
-        -> [HVar]   -- ^ Other function arguments. These are variables which
+        -> [Ex Var]   -- ^ Other function arguments. These are variables which
                     --   are expected to be in scope at the call site.
         -> Exp p b
     Sym :: ScrutId -> Exp p a
@@ -285,12 +285,12 @@ te (NGCaseOf
 
         pure funCall
   where
-    newCaseDef :: [Core.Branch (p, NormP) b] -> Gen p (String, CaseDef p, [HVar])
+    newCaseDef :: [Core.Branch (p, NormP) b] -> Gen p (String, CaseDef p, [Ex Var])
     newCaseDef bs = do
         pushFieldExps
 
         funName <- freshName "case_of_"
-        let scrutParam = HVar $ Core.MkVar @scrutTy (Core.scrutineeParamName , Nothing)
+        let scrutParam = Ex $ Core.MkVar @scrutTy (Core.scrutineeParamName , Nothing)
         retVar <- Core.MkVar . (, Nothing) <$> freshName "retVar"
         (ifs, vars) <- unzip <$> mapM (mkIf retVar) bs
         let inScopeVars = S.elems (S.unions vars)
@@ -303,7 +303,7 @@ te (NGCaseOf
              , inScopeVars
              )
 
-    mkIf :: Var a -> Core.Branch (p, NormP) b -> Gen p (Stmt p, S.Set HVar)
+    mkIf :: Var a -> Core.Branch (p, NormP) b -> Gen p (Stmt p, S.Set (Ex Var))
     mkIf retVar (Core.Branch cond body) = do
         cond' <- te cond
         body' <- te body
@@ -314,14 +314,14 @@ te (NGCaseOf
 
         pure (If cond' [Return body'], vars)
 
-    collectVars :: forall p b . LT b => Exp p b -> S.Set HVar
+    collectVars :: forall p b . LT b => Exp p b -> S.Set (Ex Var)
     collectVars = go S.empty
       where
-        go :: LT c => S.Set HVar -> Exp p c -> S.Set HVar
+        go :: LT c => S.Set (Ex Var) -> Exp p c -> S.Set (Ex Var)
         go vars = \case
-            Var v   -> HVar v `S.insert` vars
+            Var v   -> Ex v `S.insert` vars
             -- Ref v might be questionable
-            Ref v   -> HVar v `S.insert` vars
+            Ref v   -> Ex v `S.insert` vars
             Add x y -> go (go vars x) y
             Mul x y -> go (go vars x) y
             Sig e   -> go vars e
@@ -331,17 +331,6 @@ te (NGCaseOf
             CaseOfCall e _ _ -> go vars e
             Val{}   -> vars
             Sym{}   -> vars
-
--- TODO: Replace HVar and HExp with Haski.OBC.Ex
-
--- Used for heterogeneous structures of typed variables.
-data HVar = forall a . LT a => HVar (Var a)
-
-instance Eq HVar where
-    HVar (Core.MkVar x) == HVar (Core.MkVar y) = x == y
-
-instance Ord HVar where
-    HVar (Core.MkVar x) <= HVar (Core.MkVar y) = x <= y
 
 -- translates control expressions to statements
 tca :: LT a => Var a -> NCA p a -> Gen p (Stmt p)
