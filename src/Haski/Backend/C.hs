@@ -37,8 +37,6 @@ import Language.C99.Simple.Expr
 import qualified Language.C99.AST as C99.AST (TransUnit)
 import qualified Language.C99.Pretty as C99.Pretty (pretty)
 
-import Debug.Trace
-
 
 cType :: forall a . LT a => C.Type
 cType = TypeSpec $ case (typeRepLT @a) of
@@ -92,17 +90,24 @@ cCaseOfDefs = mapM (uncurry cCaseOfDef) . M.assocs
 cCaseOfDef :: String -> OBC.CaseDef p -> Compile C.FunDef
 cCaseOfDef
     funName
-    (OBC.CaseDef (Proxy :: Proxy retTy) obcParams stmts)
+    (OBC.CaseDef (Proxy :: Proxy retTy) obcParams fieldExps stmts)
   = do
+    declns <- mapM (uncurry mkDecln) $ M.assocs fieldExps
     stmts' <- mapM genCStmt stmts
-    pure $ FunDef (cType @retTy) funName (map tlHVar obcParams) [] stmts'
+    pure $ FunDef (cType @retTy) funName (map tlHVar obcParams) declns stmts'
   where
     tlHVar :: OBC.HVar -> Param
     tlHVar (OBC.HVar (var :: Var a)) = Param (cType @a) (getName var)
 
+    -- Create a declaration for a named expression.
+    mkDecln :: Name -> Ex (OBC.Exp p) -> Compile Decln
+    mkDecln name (Ex (e :: OBC.Exp p a)) = do
+        ce <- genCExpr e
+        pure $ VarDecln Nothing (cType @a) name (Just (InitExpr ce))
+
 -- for debugging only
 instance Show (OBC.CaseDef p) where
-    show (OBC.CaseDef (Proxy :: Proxy retTy) obcParams stmts) =
+    show (OBC.CaseDef (Proxy :: Proxy retTy) obcParams fieldExps stmts) =
         undefined
         -- "argTy: " ++ show (cType @argTy)
 
@@ -259,9 +264,8 @@ instance FromVar Param where
 instance FromVar Decln where
     fromVar (x :: Var a) = VarDecln Nothing (cType @a) (getName x) Nothing
 
-
 --
--- * Functions related to the compilation state
+-- Functions related to the compilation state
 --
 
 -- | Compilation state.
