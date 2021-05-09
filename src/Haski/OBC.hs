@@ -62,7 +62,7 @@ data Step p where
 -- | Function definition for handling the logic of a pattern match.
 data CaseDef p = forall retTy . (LT retTy) => CaseDef
     (Proxy retTy)  -- ^ Return type
-    [Param]        -- ^ Function params
+    [HVar]        -- ^ Function params
     [Stmt p]       -- ^ Function body
 
 data Stmt p where
@@ -101,7 +101,7 @@ data Exp p a where
     CaseOfCall :: (LT a, LT b)
         => Exp p a  -- ^ Scrutinee expression
         -> String   -- ^ Function name
-        -> [Param]  -- ^ Other function arguments. These are variables which
+        -> [HVar]  -- ^ Other function arguments. These are variables which
                     --   are expected to be in scope at the call site.
         -> Exp p b
     Sym :: ScrutId -> Exp p a
@@ -245,10 +245,10 @@ te (NGCaseOf
 
         pure funCall
   where
-    newCaseDef :: [Core.Branch (p, NormP) b] -> Gen p (String, CaseDef p, [Param])
+    newCaseDef :: [Core.Branch (p, NormP) b] -> Gen p (String, CaseDef p, [HVar])
     newCaseDef bs = do
         funName <- freshName "fun"
-        let scrutParam = Param $ Core.MkVar @scrutTy ("__ARGUMENT", Nothing)
+        let scrutParam = HVar $ Core.MkVar @scrutTy ("__ARGUMENT", Nothing)
 
         retVar <- Core.MkVar . (, Nothing) <$> freshName "retVar"
         (ifs, vars) <- unzip <$> mapM (mkIf retVar) bs
@@ -259,7 +259,7 @@ te (NGCaseOf
              , inScopeVars
              )
 
-    mkIf :: Var a -> Core.Branch (p, NormP) b -> Gen p (Stmt p, S.Set Param)
+    mkIf :: Var a -> Core.Branch (p, NormP) b -> Gen p (Stmt p, S.Set HVar)
     mkIf retVar (Core.Branch cond body) = do
         cond' <- te cond
         body' <- te body
@@ -270,14 +270,14 @@ te (NGCaseOf
 
         pure (If cond' [Return body'], vars)
 
-    collectVars :: forall p b . LT b => Exp p b -> S.Set Param
+    collectVars :: forall p b . LT b => Exp p b -> S.Set HVar
     collectVars = go S.empty
       where
-        go :: LT c => S.Set Param -> Exp p c -> S.Set Param
+        go :: LT c => S.Set HVar -> Exp p c -> S.Set HVar
         go vars = \case
-            Var v   -> Param v `S.insert` vars
+            Var v   -> HVar v `S.insert` vars
             -- Ref v might be questionable
-            Ref v   -> Param v `S.insert` vars
+            Ref v   -> HVar v `S.insert` vars
             Add x y -> go (go vars x) y
             Mul x y -> go (go vars x) y
             Sig e   -> go vars e
@@ -288,14 +288,14 @@ te (NGCaseOf
             Val{}   -> vars
             Sym{}   -> vars
 
--- Used for heterogeneous list of function parameters.
-data Param = forall a . LT a => Param (Var a)
+-- Used for heterogeneous structures of typed variables.
+data HVar = forall a . LT a => HVar (Var a)
 
-instance Eq Param where
-    Param (Core.MkVar x) == Param (Core.MkVar y) = x == y
+instance Eq HVar where
+    HVar (Core.MkVar x) == HVar (Core.MkVar y) = x == y
 
-instance Ord Param where
-    Param (Core.MkVar x) <= Param (Core.MkVar y) = x <= y
+instance Ord HVar where
+    HVar (Core.MkVar x) <= HVar (Core.MkVar y) = x <= y
 
 -- translates control expressions to statements
 tca :: LT a => Var a -> NCA p a -> Gen p (Stmt p)

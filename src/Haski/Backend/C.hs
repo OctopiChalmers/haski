@@ -95,10 +95,10 @@ cCaseOfDef
     (OBC.CaseDef (Proxy :: Proxy retTy) obcParams stmts)
   = do
     stmts' <- mapM genCStmt stmts
-    pure $ FunDef (cType @retTy) funName (map tlParam obcParams) [] stmts'
+    pure $ FunDef (cType @retTy) funName (map tlHVar obcParams) [] stmts'
   where
-    tlParam :: OBC.Param -> Param
-    tlParam (OBC.Param (var :: Var a)) = Param (cType @a) (getName var)
+    tlHVar :: OBC.HVar -> Param
+    tlHVar (OBC.HVar (var :: Var a)) = Param (cType @a) (getName var)
 
 -- for debugging only
 instance Show (OBC.CaseDef p) where
@@ -208,7 +208,7 @@ genCExpr (OBC.Gt e1 e2)  = (.>) <$> genCExpr e1 <*> genCExpr e2
 genCExpr (OBC.Sym sid)   = pure $ Ident sid
 genCExpr (OBC.CaseOfCall e f inScopeVars) = do
     e' <- genCExpr e
-    let args = e' : map (\ (OBC.Param var) -> Ident $ getName var) inScopeVars
+    let args = e' : map (\ (OBC.HVar var) -> Ident $ getName var) inScopeVars
     pure $ Funcall (Ident f) args
 
 caseC :: forall n b . RecEnumerable n b => C.Expr -> V.Vec n C.Stmt -> C.Stmt
