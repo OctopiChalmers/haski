@@ -71,7 +71,7 @@ data GExp p a where
     GCaseOf :: (LT a, LT b)
         => ArgCaseOf p -> Scrut p a -> [Branch p b] -> GExp p b
     GSym :: LT a => ArgSym p -> ScrutId -> GExp p a
-    GFieldVar :: LT a => ArgSym p -> Name -> GExp p a -> GExp p a
+    GFieldExp :: LT a => ArgSym p -> Name -> GExp p a -> GExp p a
 
 -- Scrutinee of a pattern match
 data Scrut p a = LT a => Scrut (GExp p a) ScrutId
@@ -109,7 +109,7 @@ pattern Gt :: (ArgGt p ~ ()) => (a ~ Bool)
 pattern Gt e1 e2    = GGt () e1 e2
 pattern CaseOf scrut branches = GCaseOf () scrut branches
 pattern Sym scrutId = GSym () scrutId
-pattern FieldVar tag e = GFieldVar () tag e
+pattern FieldExp tag e = GFieldExp () tag e
 
 
 -- Treat (number) expressions as numbers
@@ -154,7 +154,7 @@ mapAnn f (GCaseOf p scrut branches) =
         => (p0' -> q0') -> Branch p0 b -> Branch q0 b
     annBranch f (Branch predE bodyE) = Branch (mapAnn f predE) (mapAnn f bodyE)
 mapAnn f (GSym p sid) = GSym (f p) sid
-mapAnn f (GFieldVar p tag e) = GFieldVar (f p) tag (mapAnn f e)
+mapAnn f (GFieldExp p tag e) = GFieldExp (f p) tag (mapAnn f e)
 
 mapSndAnn :: (AllEq q q', AllEq r r')
     => (q' -> r') -> GExp (p,q) a -> GExp (p,r) a
@@ -181,7 +181,7 @@ mapSndAnn f (GCaseOf (p,q) scrut branches) =
     sndAnnBranch f (Branch predE bodyE) =
         Branch (mapSndAnn f predE) (mapSndAnn f bodyE)
 mapSndAnn f (GSym (p, q) sid) = GSym (p, f q) sid
-mapSndAnn f (GFieldVar (p, q) tag e) = GFieldVar (p, f q) tag (mapSndAnn f e)
+mapSndAnn f (GFieldExp (p, q) tag e) = GFieldExp (p, f q) tag (mapSndAnn f e)
 
 mapDef :: (forall a . GExp p a -> GExp q a)
     -> GDef p -> GDef q
@@ -211,7 +211,7 @@ getAnn (GNeg p e)    = p
 getAnn (GGt p e e')  = p
 getAnn (GCaseOf p _predE _bodyE) = p
 getAnn (GSym p _) = p
-getAnn (GFieldVar p _ _) = p
+getAnn (GFieldExp p _ _) = p
 
 -- seems like a rather expensive operation, use sparingly!
 -- the things we do for type-safety.. tsk tsk.
@@ -258,9 +258,9 @@ unpack (GCaseOf (p, q) scrut branches) =
             (bodyE1, bodyE2) = unpack bodyE
         in (Branch predE1 bodyE1, Branch predE2 bodyE2)
 unpack (GSym (p, q) sid) = (GSym p sid, GSym q sid)
-unpack (GFieldVar (p, q) tag e) =
+unpack (GFieldExp (p, q) tag e) =
     let (e1, e2) = unpack e
-    in (GFieldVar p tag e1, GFieldVar q tag e2)
+    in (GFieldExp p tag e1, GFieldExp q tag e2)
 
 fresh :: (Fresh s, Monad m) => StateT s m (Var a)
 fresh = do
@@ -284,11 +284,11 @@ getLTDict (GAbs _ e)      = getLTDict e
 getLTDict (GGt _ _ _)     = Dict @(LT Bool)
 getLTDict (GCaseOf _ _ _) = Dict
 getLTDict (GSym _ _) = Dict
-getLTDict (GFieldVar _ _ _) = Dict
+getLTDict (GFieldExp _ _ _) = Dict
 
 newFieldTagger :: (Fresh s, Monad m, LT a)
     => Name
     -> StateT s m (Stream a -> Stream a)
 newFieldTagger name = do
     tag <- freshName (name ++ "_")
-    pure $ FieldVar tag
+    pure $ FieldExp tag

@@ -17,10 +17,9 @@ import Control.Monad.RWS.Strict
 import Control.Monad.Identity (Identity, runIdentity)
 import Control.Monad.State.Lazy (StateT, get, put, evalStateT)
 
-import Debug.Trace
-
 import qualified Data.Set as S
 import qualified Data.Map as Map
+
 
 data Clock where
     Base    :: Clock
@@ -49,7 +48,7 @@ type instance ArgNeg ClockP = Clock
 type instance ArgGt  ClockP = Clock
 type instance ArgCaseOf ClockP = Clock
 type instance ArgSym ClockP = Clock
-type instance ArgFieldVar ClockP = Clock
+type instance ArgFieldExp ClockP = Clock
 
 pattern CVal :: () => (LT a)
     => Clock -> a -> GExp ClockP a
@@ -244,10 +243,10 @@ inferClock (GCaseOf ann scrut branches) = do
         bodyE' <- checkClock bodyE ckty
         pure $ Branch predE' bodyE'
 inferClock (GSym ann sid) = (\ a -> GSym (ann, a) sid) <$> freshTyVar
-inferClock (GFieldVar ann tag e) = do
+inferClock (GFieldExp ann tag e) = do
     a <- freshTyVar
     e' <- checkClock e a
-    return $ GFieldVar (ann, a) tag e'
+    return $ GFieldExp (ann, a) tag e'
 
 -- Check that an expression has a given clock
 checkClock :: GExp p a -> CkTy -> Infer (CtGExp p a)
@@ -386,7 +385,7 @@ type instance ArgNeg CkTy = CkTy
 type instance ArgGt  CkTy = CkTy
 type instance ArgCaseOf CkTy = CkTy
 type instance ArgSym CkTy = CkTy
-type instance ArgFieldVar CkTy = CkTy
+type instance ArgFieldExp CkTy = CkTy
 
 instance Eq CkTy where
     BaseTy == BaseTy
