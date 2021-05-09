@@ -62,7 +62,7 @@ mkConstructors victim = do
             e <- [e| Haski.Core.newFieldTagger |]
             justStrings <- zipWithM
                 (\ t n ->
-                    [e| $(stringE . (++ show n) . typeToString $ t)
+                    [e| $(stringE . (++ "_" ++ show n) . typeToString $ t)
                     |])
                 types
                 [0 :: Int ..]  -- Need this for constructors with multiple

@@ -102,7 +102,7 @@ caseof :: forall t a b . (Partition a t, LT a, LT b, Typeable t)
     -> (t -> Stream b)
     -> Haski (Stream b)
 caseof scrut f = do
-    let scrutId = "__ARGUMENT"
+    let scrutId = scrutineeParamName
     let scrutVar = Sym scrutId
     let branches = map ($ scrutVar) (partition @a @t)
     taggedBranches <- mapM computeTag branches

@@ -289,8 +289,8 @@ te (NGCaseOf
     newCaseDef bs = do
         pushFieldExps
 
-        funName <- freshName "fun"
-        let scrutParam = HVar $ Core.MkVar @scrutTy ("__ARGUMENT", Nothing)
+        funName <- freshName "case_of_"
+        let scrutParam = HVar $ Core.MkVar @scrutTy (Core.scrutineeParamName , Nothing)
         retVar <- Core.MkVar . (, Nothing) <$> freshName "retVar"
         (ifs, vars) <- unzip <$> mapM (mkIf retVar) bs
         let inScopeVars = S.elems (S.unions vars)

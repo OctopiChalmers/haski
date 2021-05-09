@@ -292,3 +292,8 @@ newFieldTagger :: (Fresh s, Monad m, LT a)
 newFieldTagger name = do
     tag <- freshName (name ++ "_")
     pure $ FieldExp tag
+
+-- | Reserved name to be used by the first parameter of CaseOf-style pattern
+-- matching functions!
+scrutineeParamName :: Name
+scrutineeParamName = "_S_C_R_U_T_"
