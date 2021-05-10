@@ -46,6 +46,7 @@ type instance ArgAbs ClockP = Clock
 type instance ArgSig ClockP = Clock
 type instance ArgNeg ClockP = Clock
 type instance ArgGt  ClockP = Clock
+type instance ArgNot ClockP = Clock
 type instance ArgCaseOf ClockP = Clock
 type instance ArgSym ClockP = Clock
 type instance ArgFieldExp ClockP = Clock
@@ -221,6 +222,10 @@ inferClock (GGt ann e1 e2) = do
     e1' <- checkClock e1 a
     e2' <- checkClock e2 a
     return (GGt (ann,a) e1' e2')
+inferClock (GNot ann e) = do
+    a <- freshTyVar
+    e' <- checkClock e a
+    return (GNot (ann,a) e')
 
 -- Instead of figuring out the correct clocks, we can be naive;
 -- make sure everything is on the same clock (be conservative).
@@ -383,6 +388,7 @@ type instance ArgAbs CkTy = CkTy
 type instance ArgSig CkTy = CkTy
 type instance ArgNeg CkTy = CkTy
 type instance ArgGt  CkTy = CkTy
+type instance ArgNot CkTy = CkTy
 type instance ArgCaseOf CkTy = CkTy
 type instance ArgSym CkTy = CkTy
 type instance ArgFieldExp CkTy = CkTy

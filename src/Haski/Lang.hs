@@ -152,6 +152,10 @@ merge x f = withLTa $
 gtE :: Stream Int-> Stream Int -> Stream Bool
 gtE e1 e2 = Gt e1 e2
 
+-- | Logical NOT, as a primitive.
+notE :: Stream Bool -> Stream Bool
+notE = Not
+
 -----------------------
 -- Derived operators --
 -----------------------

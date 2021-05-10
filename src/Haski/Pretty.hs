@@ -106,10 +106,13 @@ pPrintExp s = goExp
         <> rparen
     -- These ones below are makeshift
     goExp (GGt p e1 e2) = lparen
-        <> text "INT > INT"
+        <> text "<INT> > <INT>"
+        <> rparen
+    goExp (GNot p e) = lparen
+        <> text "Not <BOOL>"
         <> rparen
     goExp (GCaseOf p (Haski.Core.Scrut scrut s) branches) = lparen
-        <> text "SCRUT, BODY: "
+        <> text "CaseOf <SCRUT> <BODY>:"
         <+> hcat (map goExpBranch branches)
         <> rparen
     goExp (GSym p s) = text s
@@ -121,7 +124,7 @@ pPrintExp s = goExp
     goExpBranch :: Haski.Core.Branch p a -> Doc
     goExpBranch (Haski.Core.Branch _cond body) =
         lparen
-        <> text "CONDITION, "
+        <> text "<CONDITION>, "
         <+> goExp body
         <> rparen
 

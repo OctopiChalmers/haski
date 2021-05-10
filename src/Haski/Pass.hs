@@ -18,6 +18,7 @@ type family ArgAbs p :: *
 type family ArgSig p :: *
 type family ArgNeg p :: *
 type family ArgGt  p :: *
+type family ArgNot p :: *
 type family ArgCaseOf p :: *
 type family ArgSym p :: *
 type family ArgFieldExp p :: *
@@ -27,6 +28,7 @@ type AllEq p a =
     , (ArgWhn p) ~ a, (ArgMrg p) ~ a, (ArgAdd p) ~ a
     , (ArgMul p) ~ a, (ArgAbs p) ~ a, (ArgSig p)  ~ a
     , (ArgNeg p) ~ a, (ArgGt p) ~ a
+    , (ArgNot p) ~ a
     , (ArgCaseOf p) ~ a
     , (ArgSym p) ~ a
     , (ArgFieldExp p) ~ a
@@ -37,6 +39,7 @@ type ForallArg p (c :: * -> Constraint) =
     , c (ArgWhn p), c (ArgMrg p), c (ArgAdd p)
     , c (ArgMul p), c (ArgAbs p), c (ArgSig p)
     , c (ArgNeg p), c (ArgGt p)
+    , c (ArgNot p)
     , c (ArgCaseOf p)
     , c (ArgSym p)
     , c (ArgFieldExp p)
@@ -55,6 +58,7 @@ type instance ArgAbs RawP = ()
 type instance ArgSig RawP = ()
 type instance ArgNeg RawP = ()
 type instance ArgGt  RawP = ()
+type instance ArgNot RawP = ()
 type instance ArgCaseOf RawP = ()
 type instance ArgSym RawP = ()
 type instance ArgFieldExp RawP = ()
@@ -69,7 +73,8 @@ type instance ArgMul (a,b) = (ArgMul a, ArgMul b)
 type instance ArgAbs (a,b) = (ArgAbs a, ArgAbs b)
 type instance ArgSig (a,b) = (ArgSig a, ArgSig b)
 type instance ArgNeg (a,b) = (ArgNeg a, ArgNeg b)
-type instance ArgGt  (a,b) = (ArgGt a , ArgGt b)
+type instance ArgGt  (a,b) = (ArgGt a, ArgGt b)
+type instance ArgNot (a,b) = (ArgNot a, ArgNot b)
 type instance ArgCaseOf (a,b) = (ArgCaseOf a , ArgCaseOf b)
 type instance ArgSym (a,b) = (ArgSym a , ArgSym b)
 type instance ArgFieldExp (a,b) = (ArgSym a , ArgSym b)

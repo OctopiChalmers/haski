@@ -65,6 +65,8 @@ data GExp p a where
         => ArgNeg p -> GExp p a -> GExp p a
     GGt     :: ()
         => ArgGt p -> GExp p Int -> GExp p Int -> GExp p Bool
+    GNot :: ()
+        => ArgNot p -> GExp p Bool -> GExp p Bool
 
     -- Pattern matching
 
@@ -107,6 +109,9 @@ pattern Neg   e     = GNeg () e
 pattern Gt :: (ArgGt p ~ ()) => (a ~ Bool)
     => GExp p Int -> GExp p Int -> GExp p a
 pattern Gt e1 e2    = GGt () e1 e2
+pattern Not :: (ArgNot p ~ ()) => (a ~ Bool)
+    => GExp p Bool -> GExp p a
+pattern Not e       = GNot () e
 pattern CaseOf scrut branches = GCaseOf () scrut branches
 pattern Sym scrutId = GSym () scrutId
 pattern FieldExp tag e = GFieldExp () tag e
@@ -143,6 +148,7 @@ mapAnn f (GAbs p e )   = GAbs (f p) (mapAnn f e)
 mapAnn f (GSig p e )   = GSig (f p) (mapAnn f e)
 mapAnn f (GNeg p e )   = GNeg (f p) (mapAnn f e)
 mapAnn f (GGt p e e')  = GGt (f p) (mapAnn f e) (mapAnn f e')
+mapAnn f (GNot p e)    = GNot (f p) (mapAnn f e)
 mapAnn f (GCaseOf p scrut branches) =
     GCaseOf (f p) (annScrut f scrut) (map (annBranch f) branches)
   where
@@ -169,6 +175,7 @@ mapSndAnn f (GAbs (p,q) e )   = GAbs (p, f q) (mapSndAnn f e)
 mapSndAnn f (GSig (p,q) e )   = GSig (p, f q) (mapSndAnn f e)
 mapSndAnn f (GNeg (p,q) e )   = GNeg (p, f q) (mapSndAnn f e)
 mapSndAnn f (GGt (p,q) e e')  = GGt (p, f q) (mapSndAnn f e) (mapSndAnn f e')
+mapSndAnn f (GNot (p,q) e)  = GNot (p, f q) (mapSndAnn f e)
 mapSndAnn f (GCaseOf (p,q) scrut branches) =
     GCaseOf (p, f q) (sndAnnScrut f scrut) (map (sndAnnBranch f) branches)
   where
@@ -209,6 +216,7 @@ getAnn (GAbs p e)    = p
 getAnn (GSig p e)    = p
 getAnn (GNeg p e)    = p
 getAnn (GGt p e e')  = p
+getAnn (GNot p e)    = p
 getAnn (GCaseOf p _predE _bodyE) = p
 getAnn (GSym p _) = p
 getAnn (GFieldExp p _ _) = p
@@ -242,6 +250,9 @@ unpack (GGt (p,q) e e') = let
     (e1, e2)   = unpack e
     (e1', e2') = unpack e'
     in (GGt p e1 e1', GGt q e2 e2')
+unpack (GNot (p,q) e) =
+    let (e1, e2)   = unpack e
+    in (GNot p e1, GNot q e2)
 unpack (GCaseOf (p, q) scrut branches) =
     let (scrut1, scrut2)       = unpackScrut scrut
         (branches1, branches2) = unzip $ map unpackBranch branches
@@ -282,6 +293,7 @@ getLTDict (GSig _ e)      = getLTDict e
 getLTDict (GNeg _ e)      = getLTDict e
 getLTDict (GAbs _ e)      = getLTDict e
 getLTDict (GGt _ _ _)     = Dict @(LT Bool)
+getLTDict (GNot _ _)      = Dict @(LT Bool)
 getLTDict (GCaseOf _ _ _) = Dict
 getLTDict (GSym _ _) = Dict
 getLTDict (GFieldExp _ _ _) = Dict
