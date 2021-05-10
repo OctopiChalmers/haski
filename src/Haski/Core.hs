@@ -296,4 +296,4 @@ newFieldTagger name = do
 -- | Reserved name to be used by the first parameter of CaseOf-style pattern
 -- matching functions!
 scrutineeParamName :: Name
-scrutineeParamName = "_S_C_R_U_T_"
+scrutineeParamName = "__SCRUT__"
