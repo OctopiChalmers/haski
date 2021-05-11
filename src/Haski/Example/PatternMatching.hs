@@ -1,46 +1,51 @@
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RecursiveDo           #-}
+{-# LANGUAGE TemplateHaskell       #-}
+
+{- | Testing simple CaseOf-style pattern matching stuff -}
 
 module Haski.Example.PatternMatching where
 
+import Haski.Example.Simple
 import Haski.Lang
+import Haski.TH
 
+-- * Pattern matching on Double
 
--- Testing pattern matching stuff
+type Temp = Stream Double
+data HasFever
+    = Burning
+    | Barely
+    | Healthy
+$(mkConstructors ''HasFever)
 
-alter :: Stream Int -> Haski (Stream Int)
-alter s = s `caseof` \case
-    T1 n -> n + 1
-    T2   -> s
-
-data T = T1 (Stream Int) | T2
-instance Partition Int T where
+instance Partition Double HasFever where
     partition =
-        [ \ v -> (v `gtE` 3, pure $ T1 v)
-        , \ v -> (val True, pure T2)
+        [ \ d -> (d >. 41,   _Burning)
+        , \ d -> (d >. 37.5, _Barely)
+        , \ _ -> (val True,  _Healthy)
         ]
 
-nats :: Haski (Stream Int)
-nats = mdo
-    n <- 0 `fby` (1 + n)
-    return n
+-- | Take a stream of doubles as input and return a different value depending
+-- on the input.
+feverScore :: Stream Double -> Haski (Stream Double)
+feverScore = node "feverScore" $ \ ds -> mdo
+    score <- ds `caseof` \case
+        Burning -> ds * 3000  -- Big bonus for being close to death
+        Barely  -> ds
+        Healthy -> 0
+    return score
 
-pmnode :: Stream Int -> Haski (Stream Int)
-pmnode = node "pmnode" $ \ ns -> mdo
-    -- numbers <- nats
-    -- let altered = alter numbers
-    alter ns
+-- | Entry point
+feverScoreCall :: Haski (Stream Double)
+feverScoreCall = do
+    -- Start counting from 33
+    ds <- dfrom 33
+    feverScore ds
 
-testProg = nats >>= pmnode
-
--- counting :: Stream Bool -> Stream Bool -> Haski (Stream Int)
--- counting = node "counting" $ \ tick top -> mdo
---     o' <- 0 `fby` o
---     o <- tick `match` \case
---             True -> v
---             False -> o' + v
---     v <- top `match` \case
---             True -> 1
---             False -> 0
---     return o
+-- | Start counting in steps of 1 from some number.
+dfrom :: (Num a, LT a) => a -> Haski (Stream a)
+dfrom start = mdo
+    d <- start `fby` (1 + d)
+    return d
