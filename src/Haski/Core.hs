@@ -59,6 +59,8 @@ data GExp p a where
         => ArgNeg p -> GExp p a -> GExp p a
     GGt     :: ()
         => ArgGt p -> GExp p Int -> GExp p Int -> GExp p Bool
+    GGtPoly :: (Num a, LT a)
+        => ArgGtPoly p -> GExp p a -> GExp p a -> GExp p Bool
     GNot :: ()
         => ArgNot p -> GExp p Bool -> GExp p Bool
     -- If-then-else as a primitive (not dervied using match)
@@ -107,13 +109,17 @@ pattern Neg   e     = GNeg () e
 pattern Gt :: (ArgGt p ~ ()) => (a ~ Bool)
     => GExp p Int -> GExp p Int -> GExp p a
 pattern Gt e1 e2    = GGt () e1 e2
+
+pattern GtPoly :: (ArgGtPoly p ~ ()) => (LT a, Num a, b ~ Bool)
+    => GExp p a -> GExp p a -> GExp p b
+pattern GtPoly e1 e2   = GGtPoly () e1 e2
 pattern Not :: (ArgNot p ~ ()) => (a ~ Bool)
     => GExp p Bool -> GExp p a
-pattern Not e       = GNot () e
-pattern Ifte b e1 e2 = GIfte () b e1 e2
-pattern CaseOf scrut branches = GCaseOf () scrut branches
-pattern Sym scrutId = GSym () scrutId
+pattern Not e          = GNot () e
+pattern Ifte b e1 e2   = GIfte () b e1 e2
+pattern Sym scrutId    = GSym () scrutId
 pattern FieldExp tag e = GFieldExp () tag e
+pattern CaseOf scrut branches = GCaseOf () scrut branches
 
 
 -- Treat (number) expressions as numbers
@@ -124,6 +130,12 @@ instance (LT a, Num a) => Num (Stream a) where
     signum c      = Sig c
     fromInteger c = Val $ fromInteger c
     negate c      = Neg c
+
+instance (LT a, Fractional a) => Fractional (Stream a) where
+    fromRational = Val . fromRational
+    -- TODO: Implement (likely with a GDiv constructor), this instance is
+    -- only for fractional literals.
+    (/) = error "Division (/) is not defined for streams"
 
 instance Named (GNode p) where
     getName (GNode name _ _ _) = name
@@ -147,8 +159,12 @@ mapAnn f (GAbs p e )   = GAbs (f p) (mapAnn f e)
 mapAnn f (GSig p e )   = GSig (f p) (mapAnn f e)
 mapAnn f (GNeg p e )   = GNeg (f p) (mapAnn f e)
 mapAnn f (GGt p e e')  = GGt (f p) (mapAnn f e) (mapAnn f e')
-mapAnn f (GNot p e)    = GNot (f p) (mapAnn f e)
-mapAnn f (GIfte p b e1 e2) = GIfte (f p) (mapAnn f b) (mapAnn f e1) (mapAnn f e1)
+
+mapAnn f (GGtPoly p e e')    = GGtPoly (f p) (mapAnn f e) (mapAnn f e')
+mapAnn f (GNot p e)          = GNot (f p) (mapAnn f e)
+mapAnn f (GIfte p b e1 e2)   = GIfte (f p) (mapAnn f b) (mapAnn f e1) (mapAnn f e1)
+mapAnn f (GSym p sid)        = GSym (f p) sid
+mapAnn f (GFieldExp p tag e) = GFieldExp (f p) tag (mapAnn f e)
 mapAnn f (GCaseOf p scrut branches) =
     GCaseOf (f p) (annScrut f scrut) (map (annBranch f) branches)
   where
@@ -159,8 +175,6 @@ mapAnn f (GCaseOf p scrut branches) =
     annBranch :: (AllEq p0 p0', AllEq q0 q0')
         => (p0' -> q0') -> Branch p0 b -> Branch q0 b
     annBranch f (Branch predE bodyE) = Branch (mapAnn f predE) (mapAnn f bodyE)
-mapAnn f (GSym p sid) = GSym (f p) sid
-mapAnn f (GFieldExp p tag e) = GFieldExp (f p) tag (mapAnn f e)
 
 mapSndAnn :: (AllEq q q', AllEq r r')
     => (q' -> r') -> GExp (p,q) a -> GExp (p,r) a
@@ -175,9 +189,14 @@ mapSndAnn f (GAbs (p,q) e )   = GAbs (p, f q) (mapSndAnn f e)
 mapSndAnn f (GSig (p,q) e )   = GSig (p, f q) (mapSndAnn f e)
 mapSndAnn f (GNeg (p,q) e )   = GNeg (p, f q) (mapSndAnn f e)
 mapSndAnn f (GGt (p,q) e e')  = GGt (p, f q) (mapSndAnn f e) (mapSndAnn f e')
-mapSndAnn f (GNot (p,q) e)  = GNot (p, f q) (mapSndAnn f e)
-mapSndAnn f (GIfte (p,q) b e1 e2) =
+
+mapSndAnn f (GGtPoly (p,q) e e')     =
+    GGtPoly (p, f q) (mapSndAnn f e) (mapSndAnn f e')
+mapSndAnn f (GNot (p,q) e)           = GNot (p, f q) (mapSndAnn f e)
+mapSndAnn f (GIfte (p,q) b e1 e2)    =
     GIfte (p, f q) (mapSndAnn f b) (mapSndAnn f e1) (mapSndAnn f e2)
+mapSndAnn f (GSym (p, q) sid)        = GSym (p, f q) sid
+mapSndAnn f (GFieldExp (p, q) tag e) = GFieldExp (p, f q) tag (mapSndAnn f e)
 mapSndAnn f (GCaseOf (p,q) scrut branches) =
     GCaseOf (p, f q) (sndAnnScrut f scrut) (map (sndAnnBranch f) branches)
   where
@@ -189,8 +208,6 @@ mapSndAnn f (GCaseOf (p,q) scrut branches) =
         => (q0' -> r0') -> Branch (p0, q0) a -> Branch (p0, r0) a
     sndAnnBranch f (Branch predE bodyE) =
         Branch (mapSndAnn f predE) (mapSndAnn f bodyE)
-mapSndAnn f (GSym (p, q) sid) = GSym (p, f q) sid
-mapSndAnn f (GFieldExp (p, q) tag e) = GFieldExp (p, f q) tag (mapSndAnn f e)
 
 mapDef :: (forall a . GExp p a -> GExp q a)
     -> GDef p -> GDef q
@@ -218,6 +235,7 @@ getAnn (GAbs p e)    = p
 getAnn (GSig p e)    = p
 getAnn (GNeg p e)    = p
 getAnn (GGt p e e')  = p
+getAnn (GGtPoly p e e') = p
 getAnn (GNot p e)    = p
 getAnn (GIfte p b e1 e2) = p
 getAnn (GCaseOf p _predE _bodyE) = p
@@ -253,6 +271,10 @@ unpack (GGt (p,q) e e') = let
     (e1, e2)   = unpack e
     (e1', e2') = unpack e'
     in (GGt p e1 e1', GGt q e2 e2')
+unpack (GGtPoly (p,q) e e') = let
+    (e1, e2)   = unpack e
+    (e1', e2') = unpack e'
+    in (GGtPoly p e1 e1', GGtPoly q e2 e2')
 unpack (GNot (p,q) e) =
     let (e1, e2)   = unpack e
     in (GNot p e1, GNot q e2)
@@ -261,6 +283,10 @@ unpack (GIfte (p,q) b e1 e2) =
         (e1', e1'') = unpack e1
         (e2', e2'') = unpack e2
     in (GIfte p b' e1' e2', GIfte q b'' e1'' e2'')
+unpack (GSym (p, q) sid) = (GSym p sid, GSym q sid)
+unpack (GFieldExp (p, q) tag e) =
+    let (e1, e2) = unpack e
+    in (GFieldExp p tag e1, GFieldExp q tag e2)
 unpack (GCaseOf (p, q) scrut branches) =
     let (scrut1, scrut2)       = unpackScrut scrut
         (branches1, branches2) = unzip $ map unpackBranch branches
@@ -276,10 +302,6 @@ unpack (GCaseOf (p, q) scrut branches) =
         let (predE1, predE2) = unpack predE
             (bodyE1, bodyE2) = unpack bodyE
         in (Branch predE1 bodyE1, Branch predE2 bodyE2)
-unpack (GSym (p, q) sid) = (GSym p sid, GSym q sid)
-unpack (GFieldExp (p, q) tag e) =
-    let (e1, e2) = unpack e
-    in (GFieldExp p tag e1, GFieldExp q tag e2)
 
 fresh :: (Fresh s, Monad m) => StateT s m (Var a)
 fresh = do
@@ -301,9 +323,11 @@ getLTDict (GSig _ e)      = getLTDict e
 getLTDict (GNeg _ e)      = getLTDict e
 getLTDict (GAbs _ e)      = getLTDict e
 getLTDict (GGt _ _ _)     = Dict @(LT Bool)
-getLTDict (GNot _ _)      = Dict @(LT Bool)
-getLTDict (GCaseOf _ _ _) = Dict
-getLTDict (GSym _ _) = Dict
+
+getLTDict (GGtPoly _ _ _)   = Dict @(LT Bool)
+getLTDict (GNot _ _)        = Dict @(LT Bool)
+getLTDict (GCaseOf _ _ _)   = Dict
+getLTDict (GSym _ _)        = Dict
 getLTDict (GFieldExp _ _ _) = Dict
 
 newFieldTagger :: (Fresh s, Monad m, LT a)

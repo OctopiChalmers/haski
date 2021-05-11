@@ -210,13 +210,11 @@ genCExpr (OBC.Neg e)     = neg $ genCExpr e
 genCExpr (OBC.Sig e)     = signumC $ genCExpr e
 genCExpr (OBC.Abs e)     = absC $ genCExpr e
 genCExpr (OBC.Gt e1 e2)  = genCExpr e1 .> genCExpr e2
-genCExpr (OBC.Not e)     = UnaryOp BoolNot $ genCExpr e
-genCExpr (OBC.Ifte b e1 e2) =
-    let cond  = genCExpr b
-        whenT = genCExpr e1
-        whenF = genCExpr e2
-    in Cond cond whenT whenF
-genCExpr (OBC.Sym sid) = Ident sid
+
+genCExpr (OBC.GtPoly e1 e2) = genCExpr e1 .> genCExpr e2
+genCExpr (OBC.Not e)        = UnaryOp BoolNot $ genCExpr e
+genCExpr (OBC.Ifte b e1 e2) = Cond (genCExpr b) (genCExpr e1) (genCExpr e2)
+genCExpr (OBC.Sym sid)      = Ident sid
 genCExpr (OBC.CaseOfCall e f inScopeVars) =
     let e' = genCExpr e
         -- Important to not forget to include the scrutinee itself as an
@@ -253,6 +251,7 @@ genCStmt (OBC.CallStep x obj args) =
         selfDeref = Ident "self" .-> getName obj : args'
         funCall   = Funcall (Ident (objType obj ++ "_step")) selfDeref
     in Expr $ Ident (getName x) .= funCall
+
 genCStmt (OBC.If cond stmts) = If (genCExpr cond) (map genCStmt stmts)
 genCStmt (OBC.Return retExp) = Return . Just $ genCExpr retExp
 

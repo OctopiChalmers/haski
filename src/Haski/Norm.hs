@@ -35,16 +35,18 @@ type instance ArgAbs NormP = ()
 type instance ArgSig NormP = ()
 type instance ArgNeg NormP = ()
 type instance ArgGt  NormP = ()
-type instance ArgNot NormP = ()
-type instance ArgIfte NormP = ()
 type instance ArgFby NormP = TypeError (Invalid "NA" "Fby")
 type instance ArgMrg NormP = TypeError (Invalid "NA" "Merge")
+
+type instance ArgGtPoly NormP   = ()
+type instance ArgNot NormP      = ()
+type instance ArgIfte NormP     = ()
+type instance ArgSym NormP      = ()
+type instance ArgFieldExp NormP = ()
 -- NOTE: Like with clocks, the normalization of CaseOfs is not argued to be
 -- correct; if we need to define TypeErrors for some more types I would not
 -- know.
-type instance ArgCaseOf NormP = ()
-type instance ArgSym NormP = ()
-type instance ArgFieldExp NormP = ()
+type instance ArgCaseOf NormP   = ()
 
 -- normal control expressions
 data NCA p a where
@@ -120,12 +122,16 @@ pattern NGSig ann e     = GSig (ann,()) e
 pattern NGNeg ann e     = GNeg (ann,()) e
 pattern NGGt :: () => (a ~ Bool) => ArgGt p -> NGExp p Int -> NGExp p Int -> NGExp p a
 pattern NGGt ann e1 e2 = GGt (ann,()) e1 e2
+
+pattern NGGtPoly :: () => (LT a, Num a, b ~ Bool)
+    => ArgGtPoly p -> NGExp p a -> NGExp p a -> NGExp p b
+pattern NGGtPoly ann e1 e2   = GGtPoly (ann,()) e1 e2
 pattern NGNot :: () => (a ~ Bool) => ArgNot p -> NGExp p Bool -> NGExp p a
-pattern NGNot ann e1 = GNot (ann,()) e1
-pattern NGIfte ann b e1 e2 = GIfte (ann,()) b e1 e2
-pattern NGCaseOf ann scrut branches = GCaseOf (ann, ()) scrut branches
-pattern NGSym ann sid = GSym (ann, ()) sid
+pattern NGNot ann e1         = GNot (ann,()) e1
+pattern NGIfte ann b e1 e2   = GIfte (ann,()) b e1 e2
+pattern NGSym ann sid        = GSym (ann, ()) sid
 pattern NGFieldExp ann tag e = GFieldExp (ann, ()) tag e
+pattern NGCaseOf ann scrut branches = GCaseOf (ann, ()) scrut branches
 
 -- normalize control expressions
 normCA :: forall p q a . (AllEq p q) => GExp p a -> Norm p (NCA p a)
@@ -180,8 +186,16 @@ normE (GGt ann e1 e2) = do
     e1' <- normE e1
     e2' <- normE e2 -- eww, e2' normalizes in the filth of e1'
     return (NGGt ann e1' e2')
+normE (GGtPoly ann e1 e2) = do
+    e1' <- normE e1
+    e2' <- normE e2
+    return (NGGtPoly ann e1' e2')
 normE (GNot ann e) = NGNot ann <$> normE e
 normE (GIfte ann b e1 e2) = NGIfte ann <$> normE b <*> normE e1 <*> normE e2
+normE (GSym ann sid) = return (NGSym ann sid)
+normE (GFieldExp ann tag e) = do
+    e' <- normE e
+    return $ NGFieldExp ann tag e'
 normE (GCaseOf ann scrut branches) = do
     scrut' <- normScrut scrut
     branches' <- mapM normBranch branches
@@ -197,10 +211,6 @@ normE (GCaseOf ann scrut branches) = do
         scrut' <- normE scrut
         branches' <- normE branches
         return $ Branch scrut' branches'
-normE (GSym ann sid) = return (NGSym ann sid)
-normE (GFieldExp ann tag e) = do
-    e' <- normE e
-    return $ NGFieldExp ann tag e'
 
 
 -- normalize a definition (monadic result)

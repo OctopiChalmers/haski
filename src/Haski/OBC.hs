@@ -99,9 +99,11 @@ data Exp p a where
     Neg :: Exp p a -> Exp p a
     Abs :: Exp p a -> Exp p a
     Gt  :: Exp p Int -> Exp p Int -> Exp p Bool
-    Not :: Exp p Bool -> Exp p Bool
-    Ifte :: LT a => Exp p Bool -> Exp p a -> Exp p a -> Exp p a
 
+    GtPoly :: (LT a, Num a) => Exp p a -> Exp p a -> Exp p Bool
+    Not    :: Exp p Bool -> Exp p Bool
+    Ifte   :: LT a => Exp p Bool -> Exp p a -> Exp p a -> Exp p a
+    Sym    :: ScrutId -> Exp p a
     -- | Function call to a generated pattern matching function.
     CaseOfCall :: (LT a, LT b)
         => Exp p a  -- ^ Scrutinee expression.
@@ -111,7 +113,6 @@ data Exp p a where
                     -- be out of scope in our generated function, so we need
                     -- to explicitly pass them as arguments.
         -> Exp p b
-    Sym :: ScrutId -> Exp p a
 
 deriving instance Eq (Var a)
 deriving instance Ord (Var a)
@@ -130,11 +131,13 @@ instance Eq a => Eq (Exp p a) where
     Neg e     == Neg e'      = e == e'
     Abs e     == Abs e'      = e == e'
     Gt n1 n2  == Gt m1 m2    = n1 == m1 && n2 == m2
-    Not e     == Not e'      = e == e'
+
+    GtPoly{}     == GtPoly{}        = False
+    Not e        == Not e'          = e == e'
     Ifte b e1 e2 == Ifte b' e1' e2' = b == b' && e1 == e1' && e2 == e2'
+    Sym s        == Sym s'          = s == s'
     -- Function calls to pattern matching functions are never equal for now
     CaseOfCall{} == CaseOfCall{} = False
-    Sym s     == Sym s'      = s == s'
 
     _ == _ = False
 
@@ -238,6 +241,7 @@ te (NGSig _ e)     = Sig <$> (te e)
 te (NGNeg _ e)     = Neg <$> (te e)
 te (NGAbs _ e)     = Abs <$> (te e)
 te (NGGt _ e1 e2)  = Gt <$> (te e1) <*> (te e2)
+te (NGGtPoly _ e1 e2) = GtPoly <$> te e1 <*> te e2
 te (NGNot _ e)     = Not <$> te e
 te (NGIfte _ b e1 e2) = Ifte <$> te b <*> te e1 <*> te e2
 te (NGSym _ sid) = pure $ Sym sid
@@ -315,21 +319,22 @@ te (NGCaseOf
       where
         go :: LT c => S.Set (Ex Var) -> Exp p c -> S.Set (Ex Var)
         go vars = \case
-            Var v   -> Ex v `S.insert` vars
+            Var v        -> Ex v `S.insert` vars
             -- NOTE: Ref v might be questionable, not entirely sure when and/or
             -- if this could happen, and what it's behavior would be.
-            Ref v   -> Ex v `S.insert` vars
-            Add x y -> go (go vars x) y
-            Mul x y -> go (go vars x) y
-            Sig e   -> go vars e
-            Neg e   -> go vars e
-            Abs e   -> go vars e
-            Gt  x y -> go (go vars x) y
-            Not e   -> go vars e
+            Ref v        -> Ex v `S.insert` vars
+            Add x y      -> go (go vars x) y
+            Mul x y      -> go (go vars x) y
+            Sig e        -> go vars e
+            Neg e        -> go vars e
+            Abs e        -> go vars e
+            Gt  x y      -> go (go vars x) y
+            GtPoly x y   -> go (go vars x) y
+            Not e        -> go vars e
             Ifte b e1 e2 -> go (go (go vars b) e1) e2
+            Val{}        -> vars
+            Sym{}        -> vars
             CaseOfCall e _ _ -> go vars e
-            Val{}   -> vars
-            Sym{}   -> vars
 
 -- translates control expressions to statements
 tca :: LT a => Var a -> NCA p a -> Gen p (Stmt p)

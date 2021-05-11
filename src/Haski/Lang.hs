@@ -21,6 +21,8 @@ module Haski.Lang (
     , letDef
     , node
     , gtE
+
+    , (>.)
     , notE
     , iftePrim
 
@@ -118,8 +120,13 @@ merge x f = withLTa $
         withLTa = withDict (getLTDict x)
 
 -- | Greater-than, as a primitive.
-gtE :: Stream Int-> Stream Int -> Stream Bool
+gtE :: Stream Int -> Stream Int -> Stream Bool
 gtE e1 e2 = Gt e1 e2
+
+-- | Polymorphic greater-than, as a primitive.
+infix 4 >.
+(>.) :: (Num a, LT a) => Stream a -> Stream a -> Stream Bool
+(>.) = GtPoly
 
 -- | Logical NOT, as a primitive.
 notE :: Stream Bool -> Stream Bool
