@@ -56,19 +56,34 @@ instance Semigroup TransUnit where
 instance Monoid TransUnit where
     mempty = TransUnit [] []
 
+-- | Main entry point for code generation.
+--
 -- Ignoring the use of the Backend interface here, since its type doesn't quite
 -- fit what we want; we need to send information to the code generator
 -- _besides_ the OBC.Class structures.
 compilePlusCaseOfDefs :: ([Class p], [OBC.CaseOfDefs p1]) -> C99.AST.TransUnit
-compilePlusCaseOfDefs (cs, defs) =
-    let TransUnit ds fs = foldMap cTransUnitFromClass cs
-        caseOfDefs = concatMap cCaseOfDefs defs
-        cUnit = TransUnit ds (fs ++ caseOfDefs)
-    in translate cUnit
+compilePlusCaseOfDefs (oClasses, oCaseOfDefs) = translate cUnit
   where
-    mkVarDecln :: (C.Ident, C.Type) -> Decln
-    mkVarDecln (i, t) = C.VarDecln Nothing t i Nothing
+    cUnit :: TransUnit
+    cUnit = fold
+        $  map cTransUnitFromClass oClasses
+        <> map cTransUnitFromCaseOfDefs oCaseOfDefs
 
+-- | Convert a mapping of OBC CaseOf function definitions into a C99.Simple
+-- TransUnit that can be used to emit C.
+cTransUnitFromCaseOfDefs :: OBC.CaseOfDefs p -> TransUnit
+cTransUnitFromCaseOfDefs oCaseOfDefs =
+    let funs   = map (uncurry cCaseOfDef) . M.assocs $ oCaseOfDefs
+        declns = map (\(FunDef t s ps _ _) -> FunDecln Nothing t s ps) funs
+        -- We need to derive the function declarations so that funcions
+        -- can be called before they are defined.
+    in TransUnit declns funs
+  where
+    cCaseOfDefs :: OBC.CaseOfDefs p -> [C.FunDef]
+    cCaseOfDefs = map (uncurry cCaseOfDef) . M.assocs
+
+-- | Convert an OBC Class into a C99.Simple TransUnit that can be used to
+-- emit C.
 cTransUnitFromClass :: Class p -> TransUnit
 cTransUnitFromClass (Class name fields instances reset step) =
     let stepFunDef  = genStepFun name step
@@ -79,14 +94,11 @@ cTransUnitFromClass (Class name fields instances reset step) =
 
 -- | Compile an OBC representation of a pattern matching function into the
 -- C99.Simple AST representation.
-cCaseOfDefs :: OBC.CaseOfDefs p -> [C.FunDef]
-cCaseOfDefs = map (uncurry cCaseOfDef) . M.assocs
-
-cCaseOfDef :: String -> OBC.CaseDef p -> C.FunDef
+cCaseOfDef :: Name -> OBC.CaseDef p -> C.FunDef
 cCaseOfDef
     funName
     (OBC.CaseDef (Proxy :: Proxy retTy) obcParams fieldExps stmts)
-  = let declns = map (uncurry mkDecln) $ M.assocs fieldExps
+  = let declns = map (uncurry mkVarDecln) $ M.assocs fieldExps
         stmts' = map genCStmt stmts
     in FunDef (cType @retTy) funName (map mkParam obcParams) declns stmts'
   where
@@ -94,8 +106,8 @@ cCaseOfDef
     mkParam (Ex (var :: Var a)) = Param (cType @a) (getName var)
 
     -- Create a declaration for a named expression.
-    mkDecln :: Name -> Ex (OBC.Exp p) -> Decln
-    mkDecln name (Ex (e :: OBC.Exp p a)) =
+    mkVarDecln :: Name -> Ex (OBC.Exp p) -> Decln
+    mkVarDecln name (Ex (e :: OBC.Exp p a)) =
         let ce = genCExpr e
         in VarDecln Nothing (cType @a) name (Just (InitExpr ce))
 
