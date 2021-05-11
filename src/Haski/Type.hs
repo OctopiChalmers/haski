@@ -26,12 +26,13 @@ import GHC.TypeLits (KnownNat)
 import Text.PrettyPrint.HughesPJClass (Pretty(..),int)
 
 data TypeRepLT a where
-    TUnit :: TypeRepLT ()
-    TBool :: TypeRepLT Bool
-    TInt8 :: TypeRepLT Int8
-    TInt  :: TypeRepLT Int
-    TBFin :: TypeRepLT (BFin n a)
-    TUDef :: FinEnumPack a => TypeRepLT a
+    TUnit   :: TypeRepLT ()
+    TBool   :: TypeRepLT Bool
+    TInt8   :: TypeRepLT Int8
+    TInt    :: TypeRepLT Int
+    TBFin   :: TypeRepLT (BFin n a)
+    TUDef   :: FinEnumPack a => TypeRepLT a
+    TDouble :: TypeRepLT Double
 
 -- user defined type
 userDefLT :: FinEnumPack a => TypeRepLT a
@@ -58,6 +59,9 @@ instance Pretty Int8 => LT Int8 where
 
 instance LT Int where
     typeRepLT = TInt
+
+instance LT Double where
+    typeRepLT = TDouble
 
 -- `KnownNat n` is needed for deriving `Typeable (C n)`
 instance (KnownNat n, LT a) => LT (BFin n a) where

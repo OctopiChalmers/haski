@@ -50,12 +50,13 @@ import qualified Language.C99.Pretty as C99.Pretty (pretty)
 
 cType :: forall a . LT a => C.Type
 cType = TypeSpec $ case (typeRepLT @a) of
-    TUnit -> Char
-    TBool -> Int
-    TInt8 -> Int
-    TInt  -> Int
-    TBFin -> Unsigned_Short
-    TUDef -> Unsigned_Short
+    TUnit   -> Char
+    TBool   -> Int
+    TInt8   -> Int
+    TInt    -> Int
+    TBFin   -> Unsigned_Short
+    TUDef   -> Unsigned_Short
+    TDouble -> Double  -- Idk if this is the proper representation
 
 instance Pretty C99.AST.TransUnit where
     pPrint = C99.Pretty.pretty
@@ -184,6 +185,7 @@ genCVal x = case typeRepLT @a of
     TInt    -> LitInt $ toInteger x
     TBFin   -> valRepC x
     TUDef   -> valRepC (toBFin x)
+    TDouble -> LitDouble x
 
 signumC :: C.Expr -> C.Expr
 signumC x = (x .> (LitInt 0)) .- (x .> (LitInt 0))
