@@ -21,6 +21,7 @@ module Haski.Lang (
     , letDef
     , node
     , gtE
+    , notE
     , iftePrim
 
     -- Types and Constraints
