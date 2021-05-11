@@ -30,26 +30,26 @@ import qualified Haski.Vec as V
 
 newtype Field a = Field {toTup :: (Var a,a)}
 
-data Obj = Obj {
-    objName :: Name,    -- | Name of the instance
-    objType :: Name     -- | Name of class
+data Obj = Obj
+    { objName :: Name  -- ^ Name of the instance
+    , objType :: Name  -- ^ Name of class
     }
 
 -- | Class (or object "template") definition
 data Class p where
     Class :: Name
-        -> [Ex Field]   -- | Memory initialization
-        -> [Obj]        -- | Instances
-        -> [Stmt p]     -- | Reset statement
-        -> Step p       -- | Step method
+        -> [Ex Field]  -- ^ Memory initialization
+        -> [Obj]       -- ^ Instances
+        -> [Stmt p]    -- ^ Reset statement
+        -> Step p      -- ^ Step method
         -> Class p
 
 -- | The "step" method
 data Step p where
     Step :: LT a
-        => [Ex Var]    -- | Arguments
-        -> Exp p a      -- | Result
-        -> [Stmt p]     -- | Body
+        => [Ex Var]  -- ^ Arguments
+        -> Exp p a   -- ^ Result
+        -> [Stmt p]  -- ^ Body
         -> Step p
 
 -- | Mapping from function names to function definitions.
@@ -57,20 +57,17 @@ type CaseOfDefs p = M.Map String (CaseDef p)
 
 -- | Function definition for handling the logic of a pattern match.
 data CaseDef p = forall retTy . (LT retTy) => CaseDef
-    -- | Return type.
-    (Proxy retTy)
-    -- | Function parameters.
-    [Ex Var]
-    -- | Variable bindings for expressions corresponding to the fields
+    (Proxy retTy)  -- ^ Return type.
+    [Ex Var]       -- ^ Function parameters.
+    (M.Map Name (Ex (Exp p)))
+    -- ^ Variable bindings for expressions corresponding to the fields
     -- of Partition ADTs. For example, a ("var_0", Var "x" :: Exp p Int)
     -- binding is roughly equivalent to the "int var_0 = x;" C statement.
     -- Here, the bound expression is the result of applying
     -- "Haski.Lang.partition" to the field of some constructor. This expression
     -- can be used in multiple locations, so we bind it to a variable to reduce
     -- code that computes the same thing several times.
-    (M.Map Name (Ex (Exp p)))
-    -- | Function body.
-    [Stmt p]
+    [Stmt p]  -- ^ Function body.
 
 data Stmt p where
     Let     :: LT a => Var a -> Exp p a -> Stmt p
@@ -78,14 +75,14 @@ data Stmt p where
     Skip    :: Stmt p
     Seq     :: Stmt p -> Stmt p -> Stmt p
     Case    :: (RecEnumerable n b)
-        => Exp p (BFin n b) -- | Scrutinee
+        => Exp p (BFin n b)  -- ^ Scrutinee
         -> V.Vec n (Stmt p)
         -> Stmt p
     CallReset   :: Obj -> Stmt p
     CallStep    :: LT a
-        => Var a        -- | variable bound with result
-        -> Obj          -- | object instance
-        -> [Ex (Exp p)] -- | arguments
+        => Var a        -- ^ variable bound with result
+        -> Obj          -- ^ object instance
+        -> [Ex (Exp p)] -- ^ arguments
         -> Stmt p
     If      :: Exp p Bool -> [Stmt p] -> Stmt p  -- "if exp { stmts }"
     Return  :: Exp p a -> Stmt p                 -- "return exp;"

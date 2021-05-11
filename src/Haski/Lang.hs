@@ -328,9 +328,10 @@ illFlow = fail
 ---------------------------
 
 -- State underlying the monad
-data St = MkSt { next :: Seed
-    , stmts :: [Def]    -- list of definitions
-    , lcur  :: Label    -- current / floating label
+data St = MkSt
+    { next  :: Seed
+    , stmts :: [Def]  -- ^ list of definitions
+    , lcur  :: Label  -- ^ current / floating label
     }
 
 -- Statements
@@ -551,10 +552,11 @@ compile m = print . pPrint $ cUnit
     -- a target language.
     cUnit = compilePlusCaseOfDefs (cs, caseOfDefs)
     -- utlities
-    runPass :: (a -> Seed -> (b,Seed)) -- | pass
-        -> Seed         -- | seed
-        -> [a]          -- | pass arguments
-        -> ([b],Seed)   -- | pass results and a residue seed
+    runPass ::
+           (a -> Seed -> (b,Seed))  -- ^ pass
+        -> Seed                     -- ^ seed
+        -> [a]                      -- ^ pass arguments
+        -> ([b],Seed)               -- ^ pass results and a residue seed
     runPass f si ns_i = foldr (go f) ([],si) ns_i
       where
         go f n (ns, s) =

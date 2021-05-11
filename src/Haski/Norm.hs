@@ -64,10 +64,10 @@ data EQ p where
 -- node containing equations
 data EQNode p where
     EQNode :: LT a
-        => Name      -- | name
-        -> [Ex Var]  -- | args
-        -> [EQ p]    -- | body of eqs.
-        -> NGExp p a -- | result (e.g., return e)
+        => Name      -- ^ name
+        -> [Ex Var]  -- ^ args
+        -> [EQ p]    -- ^ body of eqs.
+        -> NGExp p a -- ^ result (e.g., return e)
         -> EQNode p
 
 data St p = MkSt { next :: Seed, subs :: [Sub p] }

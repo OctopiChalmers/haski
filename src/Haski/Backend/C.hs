@@ -6,7 +6,7 @@
 Note that the CaseOf-style pattern matching implementation (not the one using
 Merge) is pretty hacky, and its generated function calls make some assumptions
 about which variables are in scope at the call site. Currently, any Haskell
-variables used inside a `caseof` body should be in scope in the generated code,
+variables used inside a @caseof@ body should be in scope in the generated code,
 but this may not be the case of the behavior/syntax/definition of nodes change.
 
 For example:
@@ -16,11 +16,11 @@ For example:
 >     boolStream <- ns `caseof` \case
 >         T1 n b -> bs  -- <- Here!
 
-Referencing @bs@ inside the body of the `caseof` is fine, because `bs` will
+Referencing @bs@ inside the body of the @caseof@ is fine, because @bs@ will
 be in scope in the surrounding generated C. Same thing with @y@. However, if
 the definition of 'Haski.Lang.node' changes, and another Streams argument
 is introduced which won't be in scope in the generated code, referencing it
-inside the `caseof` body will still compile, but the generated C code will not.
+inside the @caseof@ body will still compile, but the generated C code will not.
 -}
 
 module Haski.Backend.C where

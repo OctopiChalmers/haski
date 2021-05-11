@@ -90,7 +90,7 @@ antiDependsOn :: CEQ p -> CEQ p -> Bool
 antiDependsOn e1 e2 = not $ S.disjoint (modifies e1) (reads e2)
 
 -- Adjacency list of equations as nodes
-type AdjList p = [(CEQ p     -- | node (i.e., the paylod)
+type AdjList p = [(CEQ p     -- node (i.e., the paylod)
     , Int
     , [Int])]
 
