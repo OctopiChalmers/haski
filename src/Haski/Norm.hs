@@ -36,6 +36,7 @@ type instance ArgSig NormP = ()
 type instance ArgNeg NormP = ()
 type instance ArgGt  NormP = ()
 type instance ArgNot NormP = ()
+type instance ArgIfte NormP = ()
 type instance ArgFby NormP = TypeError (Invalid "NA" "Fby")
 type instance ArgMrg NormP = TypeError (Invalid "NA" "Merge")
 -- TODO: I don't know how this is mean to work; use placeholders for now:
@@ -121,6 +122,7 @@ pattern NGGt :: () => (a ~ Bool) => ArgGt p -> NGExp p Int -> NGExp p Int -> NGE
 pattern NGGt ann e1 e2 = GGt (ann,()) e1 e2
 pattern NGNot :: () => (a ~ Bool) => ArgNot p -> NGExp p Bool -> NGExp p a
 pattern NGNot ann e1 = GNot (ann,()) e1
+pattern NGIfte ann b e1 e2 = GIfte (ann,()) b e1 e2
 
 pattern NGCaseOf ann scrut branches = GCaseOf (ann, ()) scrut branches
 pattern NGSym ann sid = GSym (ann, ()) sid
@@ -180,6 +182,7 @@ normE (GGt ann e1 e2) = do
     e2' <- normE e2 -- eww, e2' normalizes in the filth of e1'
     return (NGGt ann e1' e2')
 normE (GNot ann e) = NGNot ann <$> normE e
+normE (GIfte ann b e1 e2) = NGIfte ann <$> normE b <*> normE e1 <*> normE e2
 normE (GCaseOf ann scrut branches) = do
     scrut' <- normScrut scrut
     branches' <- mapM normBranch branches

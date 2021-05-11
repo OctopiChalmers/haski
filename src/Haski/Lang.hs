@@ -21,6 +21,7 @@ module Haski.Lang (
     , letDef
     , node
     , gtE
+    , iftePrim
 
     -- Types and Constraints
     , Stream
@@ -155,6 +156,10 @@ gtE e1 e2 = Gt e1 e2
 -- | Logical NOT, as a primitive.
 notE :: Stream Bool -> Stream Bool
 notE = Not
+
+-- | If-then-else expression, but as a primitve (unlike 'ifte').
+iftePrim :: LT a => Stream Bool -> Stream a -> Stream a -> Stream a
+iftePrim = Ifte
 
 -----------------------
 -- Derived operators --

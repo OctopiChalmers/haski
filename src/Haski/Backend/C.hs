@@ -204,6 +204,11 @@ genCExpr (OBC.Sig e)     = signumC $ genCExpr e
 genCExpr (OBC.Abs e)     = absC $ genCExpr e
 genCExpr (OBC.Gt e1 e2)  = genCExpr e1 .> genCExpr e2
 genCExpr (OBC.Not e)     = UnaryOp BoolNot $ genCExpr e
+genCExpr (OBC.Ifte b e1 e2) =
+    let cond  = genCExpr b
+        whenT = genCExpr e1
+        whenF = genCExpr e2
+    in Cond cond whenT whenF
 genCExpr (OBC.Sym sid)   = Ident sid
 genCExpr (OBC.CaseOfCall e f inScopeVars) =
     let e' = genCExpr e

@@ -67,6 +67,9 @@ data GExp p a where
         => ArgGt p -> GExp p Int -> GExp p Int -> GExp p Bool
     GNot :: ()
         => ArgNot p -> GExp p Bool -> GExp p Bool
+    -- If-then-else as a primitive (not dervied using match)
+    GIfte :: (LT a)
+        => ArgNot p -> GExp p Bool -> GExp p a -> GExp p a -> GExp p a
 
     -- Pattern matching
 
@@ -112,6 +115,7 @@ pattern Gt e1 e2    = GGt () e1 e2
 pattern Not :: (ArgNot p ~ ()) => (a ~ Bool)
     => GExp p Bool -> GExp p a
 pattern Not e       = GNot () e
+pattern Ifte b e1 e2 = GIfte () b e1 e2
 pattern CaseOf scrut branches = GCaseOf () scrut branches
 pattern Sym scrutId = GSym () scrutId
 pattern FieldExp tag e = GFieldExp () tag e
@@ -149,6 +153,7 @@ mapAnn f (GSig p e )   = GSig (f p) (mapAnn f e)
 mapAnn f (GNeg p e )   = GNeg (f p) (mapAnn f e)
 mapAnn f (GGt p e e')  = GGt (f p) (mapAnn f e) (mapAnn f e')
 mapAnn f (GNot p e)    = GNot (f p) (mapAnn f e)
+mapAnn f (GIfte p b e1 e2) = GIfte (f p) (mapAnn f b) (mapAnn f e1) (mapAnn f e1)
 mapAnn f (GCaseOf p scrut branches) =
     GCaseOf (f p) (annScrut f scrut) (map (annBranch f) branches)
   where
@@ -176,6 +181,8 @@ mapSndAnn f (GSig (p,q) e )   = GSig (p, f q) (mapSndAnn f e)
 mapSndAnn f (GNeg (p,q) e )   = GNeg (p, f q) (mapSndAnn f e)
 mapSndAnn f (GGt (p,q) e e')  = GGt (p, f q) (mapSndAnn f e) (mapSndAnn f e')
 mapSndAnn f (GNot (p,q) e)  = GNot (p, f q) (mapSndAnn f e)
+mapSndAnn f (GIfte (p,q) b e1 e2) =
+    GIfte (p, f q) (mapSndAnn f b) (mapSndAnn f e1) (mapSndAnn f e2)
 mapSndAnn f (GCaseOf (p,q) scrut branches) =
     GCaseOf (p, f q) (sndAnnScrut f scrut) (map (sndAnnBranch f) branches)
   where
@@ -217,6 +224,7 @@ getAnn (GSig p e)    = p
 getAnn (GNeg p e)    = p
 getAnn (GGt p e e')  = p
 getAnn (GNot p e)    = p
+getAnn (GIfte p b e1 e2) = p
 getAnn (GCaseOf p _predE _bodyE) = p
 getAnn (GSym p _) = p
 getAnn (GFieldExp p _ _) = p
@@ -253,6 +261,11 @@ unpack (GGt (p,q) e e') = let
 unpack (GNot (p,q) e) =
     let (e1, e2)   = unpack e
     in (GNot p e1, GNot q e2)
+unpack (GIfte (p,q) b e1 e2) =
+    let (b', b'')   = unpack b
+        (e1', e1'') = unpack e1
+        (e2', e2'') = unpack e2
+    in (GIfte p b' e1' e2', GIfte q b'' e1'' e2'')
 unpack (GCaseOf (p, q) scrut branches) =
     let (scrut1, scrut2)       = unpackScrut scrut
         (branches1, branches2) = unzip $ map unpackBranch branches

@@ -106,6 +106,7 @@ data Exp p a where
     Abs :: Exp p a -> Exp p a
     Gt  :: Exp p Int -> Exp p Int -> Exp p Bool
     Not :: Exp p Bool -> Exp p Bool
+    Ifte :: LT a => Exp p Bool -> Exp p a -> Exp p a -> Exp p a
 
     -- Function call to pattern matching function (argument and function name).
     CaseOfCall :: (LT a, LT b)
@@ -134,6 +135,7 @@ instance Eq a => Eq (Exp p a) where
     Abs e     == Abs e'      = e == e'
     Gt n1 n2  == Gt m1 m2    = n1 == m1 && n2 == m2
     Not e     == Not e'      = e == e'
+    Ifte b e1 e2 == Ifte b' e1' e2' = b == b' && e1 == e1' && e2 == e2'
     -- Function calls to pattern matching functions are never equal for now
     CaseOfCall{} == CaseOfCall{} = False
     Sym s     == Sym s'      = s == s'
@@ -265,6 +267,7 @@ te (NGNeg _ e)     = Neg <$> (te e)
 te (NGAbs _ e)     = Abs <$> (te e)
 te (NGGt _ e1 e2)  = Gt <$> (te e1) <*> (te e2)
 te (NGNot _ e)     = Not <$> te e
+te (NGIfte _ b e1 e2) = Ifte <$> te b <*> te e1 <*> te e2
 te (NGSym _ sid) = pure $ Sym sid
 te (NGFieldExp _ name e) = do
     e' <- te e
@@ -331,6 +334,8 @@ te (NGCaseOf
             Neg e   -> go vars e
             Abs e   -> go vars e
             Gt  x y -> go (go vars x) y
+            Not e   -> go vars e
+            Ifte b e1 e2 -> go (go (go vars b) e1) e2
             CaseOfCall e _ _ -> go vars e
             Val{}   -> vars
             Sym{}   -> vars
