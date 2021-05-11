@@ -13,7 +13,6 @@ import Haski.TH
 
 -- * Pattern matching on Double
 
-type Temp = Stream Double
 data HasFever
     = Burning
     | Barely
@@ -49,3 +48,53 @@ dfrom :: (Num a, LT a) => a -> Haski (Stream a)
 dfrom start = mdo
     d <- start `fby` (1 + d)
     return d
+
+-- * More complex types
+
+type ErrorCode = Stream Int
+type Celsius   = Stream Double
+data Temperature
+    = Hot
+    | Great Celsius
+    | Cold
+    | Error ErrorCode
+$(mkConstructors ''Temperature)
+
+data Moisture
+    = Dry
+    | Wet
+$(mkConstructors ''Moisture)
+
+instance Partition Double Temperature where
+    partition =
+        [ \ v -> (v >. 999, _Error 127)
+        , \ v -> (v >. 38,  _Hot)
+        , \ v -> (v >. 5,   _Great (v * 10))
+        , \ _ -> (val True, _Error 1)
+        ]
+
+instance Partition Int Moisture where
+    partition =
+        [ \ v -> (v >. 20,  _Wet)
+        , \ _ -> (val True, _Dry)
+        ]
+
+needsWatering :: Stream Double -> Stream Int -> Haski (Stream Bool)
+needsWatering = node "needsWatering" $ \ temp moist -> mdo
+    isDry <- moist `caseof` \case
+        Dry -> val True
+        Wet -> val False
+    isHot <- temp `caseof` \case
+        Hot        -> val True
+        Great _    -> val False
+        Cold       -> val False
+        Error code -> code >. 126
+    return $ iftePrim isDry
+                (val True)
+                isHot
+
+needsWateringCall :: Haski (Stream Bool)
+needsWateringCall = do
+    moistStream <- nats
+    let tempStream = val 26
+    needsWatering tempStream moistStream
