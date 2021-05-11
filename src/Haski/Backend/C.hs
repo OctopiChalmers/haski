@@ -100,7 +100,6 @@ cCaseOfDef
     mkParam :: Ex Var -> Param
     mkParam (Ex (var :: Var a)) = Param (cType @a) (getName var)
 
-    -- Create a declaration for a named expression.
     mkVarDecln :: Name -> Ex (OBC.Exp p) -> Decln
     mkVarDecln name (Ex (e :: OBC.Exp p a)) =
         let ce = genCExpr e
@@ -200,9 +199,11 @@ genCExpr (OBC.Ifte b e1 e2) =
         whenT = genCExpr e1
         whenF = genCExpr e2
     in Cond cond whenT whenF
-genCExpr (OBC.Sym sid)   = Ident sid
+genCExpr (OBC.Sym sid) = Ident sid
 genCExpr (OBC.CaseOfCall e f inScopeVars) =
     let e' = genCExpr e
+        -- Important to not forget to include the scrutinee itself as an
+        -- argument.
         args = e' : map (\ (Ex var) -> Ident $ getName var) inScopeVars
     in Funcall (Ident f) args
 

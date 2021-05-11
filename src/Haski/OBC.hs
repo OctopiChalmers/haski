@@ -56,16 +56,24 @@ data Step p where
         -> [Stmt p]     -- | Body
         -> Step p
 
+-- | Mapping from function names to function definitions.
+type CaseOfDefs p = M.Map String (CaseDef p)
+
 -- | Function definition for handling the logic of a pattern match.
 data CaseDef p = forall retTy . (LT retTy) => CaseDef
-    -- | Return type
+    -- | Return type.
     (Proxy retTy)
-    -- | Function parameters
+    -- | Function parameters.
     [Ex Var]
     -- | Variable bindings for expressions corresponding to the fields
-    -- of Partition ADTs.
+    -- of Partition ADTs. For example, a ("var_0", Var "x" :: Exp p Int)
+    -- binding is roughly equivalent to the "int var_0 = x;" C statement.
+    -- Here, the bound expression is the result of applying
+    -- "Haski.Lang.partition" to the field of some constructor. This expression
+    -- can be used in multiple locations, so we bind it to a variable to reduce
+    -- code that computes the same thing several times.
     (M.Map Name (Ex (Exp p)))
-    -- | Function body
+    -- | Function body.
     [Stmt p]
 
 data Stmt p where
@@ -101,21 +109,24 @@ data Exp p a where
     Not :: Exp p Bool -> Exp p Bool
     Ifte :: LT a => Exp p Bool -> Exp p a -> Exp p a -> Exp p a
 
-    -- Function call to pattern matching function (argument and function name).
+    -- | Function call to a generated pattern matching function.
     CaseOfCall :: (LT a, LT b)
-        => Exp p a  -- ^ Scrutinee expression
-        -> String   -- ^ Function name
+        => Exp p a  -- ^ Scrutinee expression.
+        -> String   -- ^ Function name.
         -> [Ex Var] -- ^ Other function arguments. These are variables which
-                    --   are expected to be in scope at the call site.
+                    -- are expected to be in scope at the call site, but would
+                    -- be out of scope in our generated function, so we need
+                    -- to explicitly pass them as arguments.
         -> Exp p b
     Sym :: ScrutId -> Exp p a
 
 deriving instance Eq (Var a)
 deriving instance Ord (Var a)
 
--- Most cases are trivial, but the CaseOf constructor needs to check if types
+-- | Most cases are trivial, but the CaseOf constructor needs to check if types
 -- of its arguments (that are not the 'b' in return 'Exp p b') are equal too,
--- which is why we cannot derive Eq.
+-- which is why we cannot derive Eq. A problem with defining equality of GADTs
+-- in general.
 instance Eq a => Eq (Exp p a) where
     Var v     == Var w       = v == w
     Ref v     == Ref w       = v == w
@@ -136,8 +147,8 @@ instance Eq a => Eq (Exp p a) where
 
 -- These are basically copies of types from "Haski.Core", but contain 'Exp'
 -- instead of 'Haski.Core.GExp'.
-data Scrut p a = LT a => Scrut (Exp p a) ScrutId
 type ScrutId = String
+data Scrut p a = LT a => Scrut (Exp p a) ScrutId
 data Branch p t b = LT b => Branch (Exp p Bool) (Exp p b)
 deriving instance Eq a => Eq (Scrut p a)
 deriving instance Eq b => Eq (Branch p t b)
@@ -176,8 +187,6 @@ joinList []       = Skip
 joinList [ s ]    = s
 joinList (s : ss) = join s (joinList ss)
 
-type CaseOfDefs p = M.Map String (CaseDef p)
-
 data GenSt p = GenSt
     { fields  :: [Ex Field]
     , objs    :: [Obj]
@@ -186,8 +195,7 @@ data GenSt p = GenSt
 
     , funDefs :: CaseOfDefs p
     -- ^ Function definitions used to handle pattern matching logic. These are
-    -- generated during translation of expressions. The mapping is from the
-    -- name of the function to its definition
+    -- generated during translation of expressions.
 
     , fieldExps :: [M.Map Name (Ex (Exp p))]
     -- ^ Stack of expressions, where each expression corresponds to the field of
@@ -195,14 +203,14 @@ data GenSt p = GenSt
     -- 'Haski.Core.newFieldTagger'. When we translate a NGCaseOf expression with
     -- 'te', we add a new Map onto the stack, creating a new context. When we
     -- "exit" the expression, we pop the map off the stack. Keeping a stack
-    -- of mappings allows us to have nested caseof-expressions.
+    -- of mappings allows us to have nested caseof-expressions without scoping
+    -- issues.
     }
 
 type Gen p = State (GenSt p)
 
 instance Plant (GenSt p) Seed where
     plant seed = modify (\s -> s {seed = seed})
-    -- 'plant seed', lol
 
 instance Plant (GenSt p) [Ex Field] where
     plant fields = modify (\s -> s {fields = fields})
@@ -215,26 +223,6 @@ instance Plant (GenSt p) [Stmt p] where
 
 instance Fresh (GenSt p) where
     getSeed = seed <$> get
-
---
--- Helper functions for modifying the 'fieldExps' stack
---
-
-popFieldExps :: Gen p (M.Map Name (Ex (Exp p)))
-popFieldExps = St.gets fieldExps >>= \case
-    []       -> error "popFieldsExps: empty stack"
-    (x : xs) -> St.modify (\st -> st { fieldExps = xs }) >> return x
-
-pushFieldExps :: Gen p ()
-pushFieldExps = St.modify (\st -> st { fieldExps = M.empty : fieldExps st })
-
-modFieldExpsTop ::
-       (M.Map Name (Ex (Exp p)) -> M.Map Name (Ex (Exp p)))
-    -> Gen p ()
-modFieldExpsTop f = St.gets fieldExps >>= \case
-    []       -> error "modFieldExpsTop: empty stack"
-    (x : xs) -> St.modify (\st -> st { fieldExps = f x : xs })
-
 -- is the given variable a state variable?
 isRef :: Var a -> Gen p Bool
 isRef x = do
@@ -262,19 +250,26 @@ te (NGIfte _ b e1 e2) = Ifte <$> te b <*> te e1 <*> te e2
 te (NGSym _ sid) = pure $ Sym sid
 te (NGFieldExp _ name e) = do
     e' <- te e
+    -- When we encounter an expression tagged as a field to a constructor,
+    -- we assume that we are currently "inside" a case-of function.
+    -- We need to add a binding to the expression to the current context, so
+    -- that variable declarations can be inserted later.
     modFieldExpsTop (M.insert name (Ex e'))
     return $ Sym name
 te (NGCaseOf
     _
     (scrut    :: Core.Scrut (p, NormP) scrutTy)
-    (branches :: [Core.Branch (p, NormP) a]))
+    (branches :: [Core.Branch (p, NormP) retTy]))
     = do
         -- Generate the definition of the pattern matching function and add
-        -- it to the compilation state.
+        -- it to the compilation state. While generating the function defintion,
+        -- we also get a list of used variables that would become unbound in
+        -- the generated functions (in the new scope); we need to explicitly
+        -- create parameters for these in the generated function.
         (funName, def, inScopeVars) <- newCaseDef branches
         modify $ \ st -> st { funDefs = M.insert funName def (funDefs st) }
 
-        -- Translate the scrutinee expression, it will be the argument to the
+        -- Translate the scrutinee expression, which will be the argument to the
         -- call to the pattern matching function.
         let Core.Scrut e sid = scrut
         e' <- te e
@@ -284,31 +279,42 @@ te (NGCaseOf
   where
     newCaseDef :: [Core.Branch (p, NormP) b] -> Gen p (String, CaseDef p, [Ex Var])
     newCaseDef bs = do
+        -- Since we are "entering" a new (case-of) function, we need to open
+        -- a new context, since any encountered FieldExps belong to __this__
+        -- function definition in particular.
         pushFieldExps
 
+        -- The scrutinee parameter of the function must use the same name
+        -- as the references to it inside the function, generated when applying
+        -- 'Haski.Lang.caseof'.
         funName <- freshName "case_of_"
-        let scrutParam = Ex $ Core.MkVar @scrutTy (Core.scrutineeParamName , Nothing)
+        let scrutParam = Ex $ Core.MkVar @scrutTy (Core.scrutineeParamName, Nothing)
+
         retVar <- Core.MkVar . (, Nothing) <$> freshName "retVar"
         (ifs, vars) <- unzip <$> mapM (mkIf retVar) bs
         let inScopeVars = S.elems (S.unions vars)
         let funBody = ifs
 
+        -- Retrieve the encountered FieldExps in this function definition and
+        -- remove the top context from the stack since we are now "exiting"
+        -- the function.
         fieldExps <- popFieldExps
 
-        pure ( funName
-             , CaseDef (Proxy @a) (scrutParam : inScopeVars) fieldExps funBody
-             , inScopeVars
-             )
+        return ( funName
+               , CaseDef (Proxy @retTy) (scrutParam : inScopeVars) fieldExps funBody
+               , inScopeVars
+               )
 
     mkIf :: Var a -> Core.Branch (p, NormP) b -> Gen p (Stmt p, S.Set (Ex Var))
     mkIf retVar (Core.Branch cond body) = do
         cond' <- te cond
         body' <- te body
-
         -- Find all variables used inside the function body so we can provide
-        -- the caller with the correct arguments.
+        -- the caller with the correct arguments. It's little bit inefficient
+        -- that we translate the expression and then immediately traverse it,
+        -- but it's a lot cleaner to use a separate pass than to bake it into
+        -- the job of 'te'.
         let vars = collectVars body'
-
         pure (If cond' [Return body'], vars)
 
     collectVars :: forall p b . LT b => Exp p b -> S.Set (Ex Var)
@@ -317,7 +323,8 @@ te (NGCaseOf
         go :: LT c => S.Set (Ex Var) -> Exp p c -> S.Set (Ex Var)
         go vars = \case
             Var v   -> Ex v `S.insert` vars
-            -- Ref v might be questionable
+            -- NOTE: Ref v might be questionable, not entirely sure when and/or
+            -- if this could happen, and what it's behavior would be.
             Ref v   -> Ex v `S.insert` vars
             Add x y -> go (go vars x) y
             Mul x y -> go (go vars x) y
@@ -387,6 +394,8 @@ tpN (EQNode name args eqs res) sd = ((clas, caseOfDefs), seed resSt)
         -- Stuff needed to generate code for pattern matching functions.
         caseOfDefs = funDefs resSt
 
+-- Main entry point
+translateNode :: CEQNode p -> Seed -> ((CClass p, CaseOfDefs (p, ClockP)), Seed)
 translateNode = tpN
 
 localVars :: [Stmt p] -> [Ex Var]
@@ -397,3 +406,22 @@ localVars = reverse . S.toList . foldr collect S.empty
     collect (Seq s1 s2)      acc = collect s1 (collect s2 acc)
     collect (Case _ bs)      acc = foldr collect acc bs
     collect _                acc = acc
+
+--
+-- Helper functions for modifying the 'fieldExps' stack
+--
+
+popFieldExps :: Gen p (M.Map Name (Ex (Exp p)))
+popFieldExps = St.gets fieldExps >>= \case
+    []       -> error "popFieldsExps: empty stack"
+    (x : xs) -> St.modify (\st -> st { fieldExps = xs }) >> return x
+
+pushFieldExps :: Gen p ()
+pushFieldExps = St.modify (\st -> st { fieldExps = M.empty : fieldExps st })
+
+modFieldExpsTop ::
+       (M.Map Name (Ex (Exp p)) -> M.Map Name (Ex (Exp p)))
+    -> Gen p ()
+modFieldExpsTop f = St.gets fieldExps >>= \case
+    []       -> error "modFieldExpsTop: empty stack"
+    (x : xs) -> St.modify (\st -> st { fieldExps = f x : xs })
