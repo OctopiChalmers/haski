@@ -1,5 +1,3 @@
--- TODO: Clean up stuff from the CaseOf addition (imports etc.)
-
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
@@ -23,12 +21,9 @@ import Haski.Enum
 import Haski.Fin
 import Haski.Clock (Clock(..),ClockP)
 
-import Data.Bifunctor (second)
 import Data.Coerce (coerce)
 import Data.Foldable (foldrM, fold)
-import Data.Maybe (isJust)
 import Data.Proxy (Proxy(..))
-import Data.Typeable (Typeable, eqT)
 import qualified Control.Monad.State.Lazy as St
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -88,8 +83,6 @@ data Stmt p where
         -> Obj          -- | object instance
         -> [Ex (Exp p)] -- | arguments
         -> Stmt p
-
-
     If      :: Exp p Bool -> [Stmt p] -> Stmt p  -- "if exp { stmts }"
     Return  :: Exp p a -> Stmt p                 -- "return exp;"
 
@@ -112,7 +105,7 @@ data Exp p a where
     CaseOfCall :: (LT a, LT b)
         => Exp p a  -- ^ Scrutinee expression
         -> String   -- ^ Function name
-        -> [Ex Var]   -- ^ Other function arguments. These are variables which
+        -> [Ex Var] -- ^ Other function arguments. These are variables which
                     --   are expected to be in scope at the call site.
         -> Exp p b
     Sym :: ScrutId -> Exp p a
@@ -120,10 +113,9 @@ data Exp p a where
 deriving instance Eq (Var a)
 deriving instance Ord (Var a)
 
--- deriving instance Eq (Exp p a)
-
 -- Most cases are trivial, but the CaseOf constructor needs to check if types
--- of its arguments (that are not the 'b' in return 'Exp p b') are equal too.
+-- of its arguments (that are not the 'b' in return 'Exp p b') are equal too,
+-- which is why we cannot derive Eq.
 instance Eq a => Eq (Exp p a) where
     Var v     == Var w       = v == w
     Ref v     == Ref w       = v == w
@@ -142,13 +134,12 @@ instance Eq a => Eq (Exp p a) where
 
     _ == _ = False
 
--- These are basically copies of types from "Haski.Core", but contains 'Exp'
+-- These are basically copies of types from "Haski.Core", but contain 'Exp'
 -- instead of 'Haski.Core.GExp'.
 data Scrut p a = LT a => Scrut (Exp p a) ScrutId
 type ScrutId = String
-deriving instance Eq a => Eq (Scrut p a)
-
 data Branch p t b = LT b => Branch (Exp p Bool) (Exp p b)
+deriving instance Eq a => Eq (Scrut p a)
 deriving instance Eq b => Eq (Branch p t b)
 
 instance Named Obj where

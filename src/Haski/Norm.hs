@@ -1,4 +1,3 @@
--- TODO: Clean up stuff from the CaseOf addition (imports etc.)
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -39,12 +38,12 @@ type instance ArgNot NormP = ()
 type instance ArgIfte NormP = ()
 type instance ArgFby NormP = TypeError (Invalid "NA" "Fby")
 type instance ArgMrg NormP = TypeError (Invalid "NA" "Merge")
--- TODO: I don't know how this is mean to work; use placeholders for now:
--- hopefully this works and is unrelated to synchonous business
+-- NOTE: Like with clocks, the normalization of CaseOfs is not argued to be
+-- correct; if we need to define TypeErrors for some more types I would not
+-- know.
 type instance ArgCaseOf NormP = ()
 type instance ArgSym NormP = ()
 type instance ArgFieldExp NormP = ()
-
 
 -- normal control expressions
 data NCA p a where
@@ -123,7 +122,6 @@ pattern NGGt ann e1 e2 = GGt (ann,()) e1 e2
 pattern NGNot :: () => (a ~ Bool) => ArgNot p -> NGExp p Bool -> NGExp p a
 pattern NGNot ann e1 = GNot (ann,()) e1
 pattern NGIfte ann b e1 e2 = GIfte (ann,()) b e1 e2
-
 pattern NGCaseOf ann scrut branches = GCaseOf (ann, ()) scrut branches
 pattern NGSym ann sid = GSym (ann, ()) sid
 pattern NGFieldExp ann tag e = GFieldExp (ann, ()) tag e

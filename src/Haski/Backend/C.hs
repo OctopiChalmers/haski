@@ -1,7 +1,5 @@
--- TODO: Need a primer on how the code is generated :D
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE StandaloneDeriving #-}
 
 {- | C-backend code generation.
 
@@ -13,11 +11,8 @@ assumptions about variables being in scope at the call site.
 module Haski.Backend.C where
 
 import Data.Foldable (Foldable(fold))
-import Data.Functor ((<&>))
-import Data.Proxy (Proxy(..))
 import Text.PrettyPrint.HughesPJClass (Pretty(..))
-
-import qualified Control.Monad.State.Strict as St
+import Data.Proxy (Proxy(..))
 import qualified Data.Map.Strict as M
 
 import Haski.OBC (Class(..), Field(..), Obj(..), Step(..) )
@@ -111,23 +106,7 @@ cCaseOfDef
         let ce = genCExpr e
         in VarDecln Nothing (cType @a) name (Just (InitExpr ce))
 
--- for debugging only
-instance Show (OBC.CaseDef p) where
-    show (OBC.CaseDef (Proxy :: Proxy retTy) obcParams fieldExps stmts) =
-        undefined
-        -- "argTy: " ++ show (cType @argTy)
-
--- for debugging only
-deriving instance Show C.Type
-deriving instance Show C.Expr
-deriving instance Show C.AssignOp
-deriving instance Show C.Init
-deriving instance Show C.UnaryOp
-deriving instance Show C.BinaryOp
-deriving instance Show C.TypeName
-deriving instance Show C.TypeSpec
-deriving instance Show C.FieldDecln
-
+voidC :: Type
 voidC = Type (TypeSpec Void)
 
 genResetFun :: Name -> [OBC.Stmt p] -> FunDef

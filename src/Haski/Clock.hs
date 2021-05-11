@@ -1,4 +1,3 @@
--- TODO: Clean up stuff from the CaseOf addition (imports etc.)
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -233,11 +232,12 @@ inferClock (GIfte ann b e1 e2) = do
     e1' <- checkClock e1 a
     e2' <- checkClock e2 a
     return (GIfte (ann,a) b' e1' e2')
--- Instead of figuring out the correct clocks, we can be naive;
--- make sure everything is on the same clock (be conservative).
--- Let us make it so everything is on the same clock (branch, scrut);
--- pass the freshTyVar around:
+-- NOTE: The clocks inference for CaseOf and related expressions is not based on
+-- some theory or reasoning. Rather, it's implemented entirely with a "see if it
+-- seems to work"-approach.
 inferClock (GCaseOf ann scrut branches) = do
+    -- The approach taken here is that we use the same clock type for both the
+    -- scrutinee and all branches. This seems most likely to be sensible.
     ckTy <- freshTyVar
     scrut' <- inferClockScrut ckTy scrut
     branches' <- mapM (inferClockBranch ckTy) branches

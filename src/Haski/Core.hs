@@ -1,4 +1,3 @@
--- TODO: Clean up stuff from the CaseOf addition (imports etc.)
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE PatternSynonyms #-}
@@ -72,13 +71,14 @@ data GExp p a where
         => ArgNot p -> GExp p Bool -> GExp p a -> GExp p a -> GExp p a
 
     -- Pattern matching
-
     GCaseOf :: (LT a, LT b)
         => ArgCaseOf p -> Scrut p a -> [Branch p b] -> GExp p b
-    GSym :: LT a => ArgSym p -> ScrutId -> GExp p a
-    GFieldExp :: LT a => ArgSym p -> Name -> GExp p a -> GExp p a
+    GSym :: LT a
+        => ArgSym p -> ScrutId -> GExp p a
+    GFieldExp :: LT a
+        => ArgSym p -> Name -> GExp p a -> GExp p a
 
--- Scrutinee of a pattern match
+-- Scrutinee of a pattern match; basically a tagged expression.
 data Scrut p a = LT a => Scrut (GExp p a) ScrutId
 type ScrutId = String
 
@@ -319,6 +319,7 @@ newFieldTagger name = do
     pure $ FieldExp tag
 
 -- | Reserved name to be used by the first parameter of CaseOf-style pattern
--- matching functions!
+-- matching functions! If other things are named the same as this, problems
+-- may arise.
 scrutineeParamName :: Name
 scrutineeParamName = "__SCRUT__"
