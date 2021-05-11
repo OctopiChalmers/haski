@@ -9,27 +9,23 @@
 
 module Haski.OBC where
 
-import Haski.Core (Var,RecEnumerable)
-import qualified Haski.Core as Core
-import Haski.Norm
-import Haski.Schedule (CNGExp, CNCA, CEQ, CEQNode, getClock,)
-
-import Haski.Util
-import Haski.Type
-import qualified Haski.Vec as V
-import Haski.Enum
-import Haski.Fin
-import Haski.Clock (Clock(..),ClockP)
-
 import Data.Coerce (coerce)
-import Data.Foldable (foldrM, fold)
-import Data.Proxy (Proxy(..))
+import Control.Monad.State.Lazy (State, get, runState, modify)
 import qualified Control.Monad.State.Lazy as St
+import Data.Foldable (foldrM)
 import qualified Data.Map.Strict as M
+import Data.Proxy (Proxy(..))
 import qualified Data.Set as S
 
-import Control.Monad.Reader hiding (join)
-import Control.Monad.State.Lazy (State, StateT, get, runState, execState, modify, modify')
+import Haski.Clock (Clock(..), ClockP)
+import Haski.Core (Var, RecEnumerable)
+import qualified Haski.Core as Core
+import Haski.Enum
+import Haski.Norm
+import Haski.Schedule (CNCA, CEQ, CEQNode, getClock)
+import Haski.Type
+import Haski.Util
+import qualified Haski.Vec as V
 
 
 newtype Field a = Field {toTup :: (Var a,a)}

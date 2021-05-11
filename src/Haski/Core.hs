@@ -1,29 +1,24 @@
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE Rank2Types #-}
-{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Haski.Core where
 
 import Prelude hiding ((<>))
-import GHC.TypeLits
-import qualified Data.Map as M
+import Control.Monad.State.Lazy (StateT)
 import Data.Coerce (coerce)
 import Data.Constraint (Dict(..))
-import Data.Typeable (Typeable)
+import GHC.TypeLits
 
-import Control.Monad (mapM, guard, zipWithM_)
-import Control.Monad.State.Lazy (StateT, get, execState, modify)
-
-import Haski.Fin
 import Haski.Enum
-import qualified Haski.Vec as V
+import Haski.Pass
 import Haski.Type
 import Haski.Util
-import Haski.Pass
+import qualified Haski.Vec as V
 
 -- Variables (annotated)
 newtype Var a = MkVar (Name, Maybe String)

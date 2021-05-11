@@ -13,7 +13,6 @@ import qualified Data.List as List
 
 import qualified Haski.Core
 import qualified Haski.Lang
-import qualified Haski.Util
 
 
 {- | Create smart constructors for some partition type.

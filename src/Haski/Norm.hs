@@ -1,21 +1,22 @@
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Haski.Norm where
 
-import GHC.TypeLits
 import Control.Monad.State
+import GHC.TypeLits
 
 import Haski.Core
-import Haski.Type
-import qualified Haski.Vec as V
 import Haski.Enum
-import Haski.Util
 import Haski.Pass
+import Haski.Type
+import Haski.Util
+import qualified Haski.Vec as V
+
 
 -- normalization pass
 data NormP

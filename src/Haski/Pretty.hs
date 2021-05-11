@@ -9,20 +9,20 @@
 module Haski.Pretty where
 
 import Prelude hiding ((<>))
+import Data.Coerce (coerce, Coercible)
 import Data.List
 import Data.Maybe (fromMaybe)
-import Data.Coerce (coerce, Coercible)
 import Text.PrettyPrint
 import Text.PrettyPrint.HughesPJClass hiding (pPrintList)
 
-import Haski.Core
-import Haski.Util
-import Haski.Pass (ForallArg)
 import Haski.Clock
+import Haski.Core
 import Haski.Norm
 import Haski.OBC hiding (Exp,Let)
 import qualified Haski.OBC as OBC
-import Haski.Enum
+import Haski.Pass (ForallArg)
+import Haski.Util
+
 
 instance (Show a) => Show (Stream a) where
     show = show . pPrint

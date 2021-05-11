@@ -1,11 +1,11 @@
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE ConstraintKinds #-}
+
 module Haski.Pass where
 
-import Haski.Util
 import GHC.Exts (Constraint)
+
 
 type family ArgVal p :: *
 type family ArgVar p :: *

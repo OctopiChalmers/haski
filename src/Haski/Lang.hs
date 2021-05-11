@@ -1,12 +1,12 @@
-{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Haski.Lang (
@@ -54,40 +54,33 @@ module Haski.Lang (
 ) where
 
 import Prelude hiding ((<>))
+import Control.Monad.Identity (Identity)
+import Control.Monad (unless)
+import qualified Control.Monad as ControlM
+import Control.Monad.State.Lazy (StateT, get, runState, execState, modify)
+import Data.Constraint (withDict)
 import qualified Data.Bifunctor as Bifunctor
 import Data.Int (Int8)
-import Data.Maybe (fromJust)
 import qualified Data.Map as M
-import Data.Constraint (withDict)
-import Control.Monad (replicateM,unless)
-import qualified Control.Monad as ControlM
-import Control.Monad.Identity (Identity, runIdentity)
-import Control.Monad.State.Lazy (StateT, get, runState, execState, modify)
-import GHC.TypeLits
-import GHC.Records
+import Text.PrettyPrint
+import Text.PrettyPrint.HughesPJClass hiding (prettyShow)
 
-import Haski.Enum hiding (not)
-import Haski.Type
+import Haski.Backend.C (compilePlusCaseOfDefs)
+import Haski.Clock (clockNode)
 import Haski.Core hiding (Def, Let)
 import qualified Haski.Core as Core
-import Haski.Fin (valRep)
-import qualified Haski.Vec as V
-import Haski.Pretty
-import Haski.Util
-import Haski.Norm (normNode)
-import Haski.Clock (clockNode)
-import Haski.Schedule (scheduleNode)
-import Haski.OBC (translateNode)
-import Haski.Backend (compileClasses)
-import Haski.Backend.C (compilePlusCaseOfDefs)
-import qualified Language.C99.AST as C (TransUnit)
-import Haski.Pass (AllEq,RawP)
 import Haski.DCLabel.Core
 import Haski.DCLabel.NanoEDSL (newDC)
 import Haski.DCLabel.PrettyShow
-
-import Text.PrettyPrint
-import Text.PrettyPrint.HughesPJClass hiding (prettyShow)
+import Haski.Enum hiding (not)
+import Haski.Norm (normNode)
+import Haski.OBC (translateNode)
+import Haski.Pass (RawP)
+import Haski.Pretty ()
+import Haski.Schedule (scheduleNode)
+import Haski.Type
+import Haski.Util
+import qualified Haski.Vec as V
 
 
 ----------------------------------

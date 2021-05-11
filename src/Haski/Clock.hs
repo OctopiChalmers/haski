@@ -4,20 +4,18 @@
 
 module Haski.Clock where
 
-import Haski.Type
-import Haski.Enum
-import Haski.Core
-import qualified Haski.Vec as V
-import Haski.Util
-import Haski.Pass
-
 import Control.Monad.Except
 import Control.Monad.RWS.Strict
-import Control.Monad.Identity (Identity, runIdentity)
 import Control.Monad.State.Lazy (StateT, get, put, evalStateT)
-
 import qualified Data.Set as S
 import qualified Data.Map as Map
+
+import Haski.Core
+import Haski.Enum
+import Haski.Pass
+import Haski.Type
+import Haski.Util
+import qualified Haski.Vec as V
 
 
 data Clock where
