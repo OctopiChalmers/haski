@@ -186,6 +186,7 @@ normE (GGt ann e1 e2) = do
     e1' <- normE e1
     e2' <- normE e2 -- eww, e2' normalizes in the filth of e1'
     return (NGGt ann e1' e2')
+
 normE (GGtPoly ann e1 e2) = do
     e1' <- normE e1
     e2' <- normE e2

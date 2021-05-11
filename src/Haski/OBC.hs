@@ -132,12 +132,13 @@ instance Eq a => Eq (Exp p a) where
     Abs e     == Abs e'      = e == e'
     Gt n1 n2  == Gt m1 m2    = n1 == m1 && n2 == m2
 
-    GtPoly{}     == GtPoly{}        = False
     Not e        == Not e'          = e == e'
     Ifte b e1 e2 == Ifte b' e1' e2' = b == b' && e1 == e1' && e2 == e2'
     Sym s        == Sym s'          = s == s'
     -- Function calls to pattern matching functions are never equal for now
     CaseOfCall{} == CaseOfCall{} = False
+    -- Ditto for GtPoly
+    GtPoly{}     == GtPoly{}= False
 
     _ == _ = False
 
@@ -241,10 +242,11 @@ te (NGSig _ e)     = Sig <$> (te e)
 te (NGNeg _ e)     = Neg <$> (te e)
 te (NGAbs _ e)     = Abs <$> (te e)
 te (NGGt _ e1 e2)  = Gt <$> (te e1) <*> (te e2)
-te (NGGtPoly _ e1 e2) = GtPoly <$> te e1 <*> te e2
-te (NGNot _ e)     = Not <$> te e
-te (NGIfte _ b e1 e2) = Ifte <$> te b <*> te e1 <*> te e2
-te (NGSym _ sid) = pure $ Sym sid
+
+te (NGGtPoly _ e1 e2)    = GtPoly <$> te e1 <*> te e2
+te (NGNot _ e)           = Not <$> te e
+te (NGIfte _ b e1 e2)    = Ifte <$> te b <*> te e1 <*> te e2
+te (NGSym _ sid)         = pure $ Sym sid
 te (NGFieldExp _ name e) = do
     e' <- te e
     -- When we encounter an expression tagged as a field to a constructor,
@@ -253,6 +255,43 @@ te (NGFieldExp _ name e) = do
     -- that variable declarations can be inserted later.
     modFieldExpsTop (M.insert name (Ex e'))
     return $ Sym name
+
+{- (the `te NGCaseOf` case should probably be a separate function...)
+== How are CaseOf:s compiled? ==
+
+Recall that a CaseOf holds a scrutinee expression and branches (containing
+expressions). To compile a CaseOf, we generate a new function to handle
+the pattern matching logic. This function will take the scrutinee as an argument
+and its body will contain the branches, compiled to if-statements.
+
+When we translate an NGCaseOf, we only return the __call__ to the pattern
+matching function. As for the function definition, we build a 'CaseOfDef'
+construct and store it in state; this state is then passed to the appropriate
+code generator (such as Haski.Backend.C), along with the rest of the program.
+
+Once in the code generator, we can simply translate the CaseOfDefs into
+C functions separately. The only problem is that, because we create a separate
+function to handle the logic, we might be using variables that were in scope
+in our Haskell expression, but are now out of scope since they are only visible
+in the body of the caller of our pattern matching function.
+
+To handle this problem, we need to keep track of all variables used in the
+body of our pattern matching function, so we can pass them explicitly as
+arguments. We can do this while building our CaseOfDefs; this is why
+'newCaseDef' returns the function name, the CaseDef, AND a list of (Ex Vars).
+This list of variables is stored in both the CaseOfDefs (for the function
+signature), and the function call expression (so we can supply the right
+arguments when calling).
+
+This is noted in the Haski.Backend.C module description as well, but it should
+be noted that this method of keeping variables in scope is not very robust;
+we assume that everything we can use in our Haskell expression will also be
+in scope in the generated C code. Currently, I think this is the case;
+all variables we can reference will be declared and in scope in the body of
+the "xxx_step" function. If a change in implementation causes this to change
+however, the generated C code could posibly contain undeclared/undefined/etc
+variables.
+-}
 te (NGCaseOf
     _
     (scrut    :: Core.Scrut (p, NormP) scrutTy)
@@ -302,6 +341,8 @@ te (NGCaseOf
                , inScopeVars
                )
 
+    -- Create an if-statement corresponding to one branch of a pattern match.
+    -- Return the statement and all variables contained within the body.
     mkIf :: Var a -> Core.Branch (p, NormP) b -> Gen p (Stmt p, S.Set (Ex Var))
     mkIf retVar (Core.Branch cond body) = do
         cond' <- te cond
@@ -314,6 +355,7 @@ te (NGCaseOf
         let vars = collectVars body'
         pure (If cond' [Return body'], vars)
 
+    -- Traverse an expression tree and return any variables we encounter.
     collectVars :: forall p b . LT b => Exp p b -> S.Set (Ex Var)
     collectVars = go S.empty
       where
@@ -409,14 +451,18 @@ localVars = reverse . S.toList . foldr collect S.empty
 -- Helper functions for modifying the 'fieldExps' stack
 --
 
+-- | Remove the top mapping from the stack of FieldExp mappings and return
+-- the mapping.
 popFieldExps :: Gen p (M.Map Name (Ex (Exp p)))
 popFieldExps = St.gets fieldExps >>= \case
     []       -> error "popFieldsExps: empty stack"
     (x : xs) -> St.modify (\st -> st { fieldExps = xs }) >> return x
 
+-- | Add an empty mapping to the top of the stack of FieldExp mappings.
 pushFieldExps :: Gen p ()
 pushFieldExps = St.modify (\st -> st { fieldExps = M.empty : fieldExps st })
 
+-- | Apply a function to the top mapping of the stack of FieldExp mappings.
 modFieldExpsTop ::
        (M.Map Name (Ex (Exp p)) -> M.Map Name (Ex (Exp p)))
     -> Gen p ()

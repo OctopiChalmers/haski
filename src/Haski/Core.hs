@@ -59,8 +59,11 @@ data GExp p a where
         => ArgNeg p -> GExp p a -> GExp p a
     GGt     :: ()
         => ArgGt p -> GExp p Int -> GExp p Int -> GExp p Bool
+
+    -- Polymorphic greater-than
     GGtPoly :: (Num a, LT a)
         => ArgGtPoly p -> GExp p a -> GExp p a -> GExp p Bool
+    -- Logical NOT
     GNot :: ()
         => ArgNot p -> GExp p Bool -> GExp p Bool
     -- If-then-else as a primitive (not dervied using match)
@@ -70,15 +73,18 @@ data GExp p a where
     -- Pattern matching
     GCaseOf :: (LT a, LT b)
         => ArgCaseOf p -> Scrut p a -> [Branch p b] -> GExp p b
+    -- "Dummy" expression to stand in for actual values when applying
+    -- 'Haski.Lang.partition'.
     GSym :: LT a
         => ArgSym p -> ScrutId -> GExp p a
+    -- Wrapper expression to denote expressions which correspond to the
+    -- field of a Partition constructor.
     GFieldExp :: LT a
         => ArgSym p -> Name -> GExp p a -> GExp p a
 
 -- Scrutinee of a pattern match; basically a tagged expression.
 data Scrut p a = LT a => Scrut (GExp p a) ScrutId
 type ScrutId = String
-
 -- Branch of a pattern match (predicate on scrutinee for selecting branch
 -- + body of branch, which is an expression)
 data Branch p b = LT b => Branch (GExp p Bool) (GExp p b)
@@ -330,6 +336,9 @@ getLTDict (GCaseOf _ _ _)   = Dict
 getLTDict (GSym _ _)        = Dict
 getLTDict (GFieldExp _ _ _) = Dict
 
+-- | Create a tagger function that wraps an expression with an attached
+-- name. This function is not really meant to be called manually, but it
+-- is used in the generated smart constructors from "Haski.TH".
 newFieldTagger :: (Fresh s, Monad m, LT a)
     => Name
     -> StateT s m (Stream a -> Stream a)
