@@ -225,24 +225,17 @@ inferClock (GGt ann e1 e2) = do
 
 inferClock (GGtPoly ann e1 e2) = do
     a <- freshTyVar
-    e1' <- checkClock e1 a
-    e2' <- checkClock e2 a
-    return (GGtPoly (ann,a) e1' e2')
+    GGtPoly (ann,a) <$> checkClock e1 a <*> checkClock e2 a
 inferClock (GNot ann e) = do
     a <- freshTyVar
-    e' <- checkClock e a
-    return (GNot (ann,a) e')
+    GNot (ann,a) <$> checkClock e a
 inferClock (GIfte ann b e1 e2) = do
     a <- freshTyVar
-    b' <- checkClock b a
-    e1' <- checkClock e1 a
-    e2' <- checkClock e2 a
-    return (GIfte (ann,a) b' e1' e2')
+    GIfte (ann,a) <$> checkClock b a <*> checkClock e1 a <*> checkClock e2 a
 inferClock (GSym ann sid) = (\ a -> GSym (ann, a) sid) <$> freshTyVar
 inferClock (GFieldExp ann tag e) = do
     a <- freshTyVar
-    e' <- checkClock e a
-    return $ GFieldExp (ann, a) tag e'
+    GFieldExp (ann, a) tag <$> checkClock e a
 -- NOTE: The clocks inference for CaseOf and related expressions is not based on
 -- some theory or reasoning. Rather, it's implemented entirely with a "see if it
 -- seems to work"-approach.
@@ -252,18 +245,15 @@ inferClock (GCaseOf ann scrut branches) = do
     ckTy <- freshTyVar
     scrut' <- inferClockScrut ckTy scrut
     branches' <- mapM (inferClockBranch ckTy) branches
-    return (GCaseOf (ann, ckTy) scrut' branches')
+    return $ GCaseOf (ann, ckTy) scrut' branches'
   where
     inferClockScrut :: CkTy -> Scrut p e -> Infer (Scrut (p, CkTy) e)
-    inferClockScrut ckty (Scrut scrutE sid) = do
-        scrutE' <- checkClock scrutE ckty
-        pure $ Scrut scrutE' sid
+    inferClockScrut ckty (Scrut scrutE sid) =
+        flip Scrut sid <$> checkClock scrutE ckty
 
     inferClockBranch :: CkTy -> Branch p b -> Infer (Branch (p, CkTy) b)
-    inferClockBranch ckty (Branch predE bodyE) = do
-        predE' <- checkClock predE ckty
-        bodyE' <- checkClock bodyE ckty
-        pure $ Branch predE' bodyE'
+    inferClockBranch ckty (Branch predE bodyE) =
+        Branch <$> checkClock predE ckty <*> checkClock bodyE ckty
 
 -- Check that an expression has a given clock
 checkClock :: GExp p a -> CkTy -> Infer (CtGExp p a)

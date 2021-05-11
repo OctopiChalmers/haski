@@ -277,12 +277,13 @@ unpack (GGt (p,q) e e') = let
     (e1, e2)   = unpack e
     (e1', e2') = unpack e'
     in (GGt p e1 e1', GGt q e2 e2')
+
 unpack (GGtPoly (p,q) e e') = let
     (e1, e2)   = unpack e
     (e1', e2') = unpack e'
     in (GGtPoly p e1 e1', GGtPoly q e2 e2')
 unpack (GNot (p,q) e) =
-    let (e1, e2)   = unpack e
+    let (e1, e2) = unpack e
     in (GNot p e1, GNot q e2)
 unpack (GIfte (p,q) b e1 e2) =
     let (b', b'')   = unpack b

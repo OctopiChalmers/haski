@@ -187,31 +187,22 @@ normE (GGt ann e1 e2) = do
     e2' <- normE e2 -- eww, e2' normalizes in the filth of e1'
     return (NGGt ann e1' e2')
 
-normE (GGtPoly ann e1 e2) = do
-    e1' <- normE e1
-    e2' <- normE e2
-    return (NGGtPoly ann e1' e2')
-normE (GNot ann e) = NGNot ann <$> normE e
-normE (GIfte ann b e1 e2) = NGIfte ann <$> normE b <*> normE e1 <*> normE e2
-normE (GSym ann sid) = return (NGSym ann sid)
-normE (GFieldExp ann tag e) = do
-    e' <- normE e
-    return $ NGFieldExp ann tag e'
+normE (GGtPoly ann e1 e2)   = NGGtPoly ann <$> normE e1 <*> normE e2
+normE (GNot ann e)          = NGNot ann <$> normE e
+normE (GIfte ann b e1 e2)   = NGIfte ann <$> normE b <*> normE e1 <*> normE e2
+normE (GSym ann sid)        = return (NGSym ann sid)
+normE (GFieldExp ann tag e) = NGFieldExp ann tag <$> normE e
 normE (GCaseOf ann scrut branches) = do
     scrut' <- normScrut scrut
     branches' <- mapM normBranch branches
     return $ NGCaseOf ann scrut' branches'
   where
     normScrut :: (AllEq p q) => Scrut p a -> Norm p (Scrut (p, NormP) a)
-    normScrut a@(Scrut e sid) = do
-        e' <- normE e
-        pure $ Scrut e' sid
+    normScrut (Scrut e sid) = flip Scrut sid <$> normE e
 
     normBranch :: (AllEq p q) => Branch p b -> Norm p (Branch (p, NormP) b)
-    normBranch (Branch scrut branches) = do
-        scrut' <- normE scrut
-        branches' <- normE branches
-        return $ Branch scrut' branches'
+    normBranch (Branch scrut branches) =
+        Branch <$> normE scrut <*> normE branches
 
 
 -- normalize a definition (monadic result)
