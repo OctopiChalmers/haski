@@ -27,6 +27,10 @@ mkConstructors victim = do
         funs <- mapM genCon constructors
         sigs <- mapM (genSig (ConT tName)) constructors
         pure $ funs ++ sigs
+    genConstructors (NewtypeD [] tName [] _ constructor _) = do
+        fun <- genCon constructor
+        sig <- genSig (ConT tName) constructor
+        pure [fun, sig]
     genConstructors _ = err $ concat
         [ "Invalid data declaration for type `", show victim, "`. Currently"
         , " only allows very simple data declarations, e.g. no support for"
