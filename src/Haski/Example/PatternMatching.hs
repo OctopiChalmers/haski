@@ -89,7 +89,7 @@ needsWatering = node "needsWatering" $ \ temp moist -> mdo
         Great _    -> val False
         Cold       -> val False
         Error code -> code >. 126
-    return $ iftePrim isDry
+    return $ iftePrim isDry  -- 'iftePrim' is potentially unsafe!
                 (val True)
                 isHot
 

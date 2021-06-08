@@ -42,6 +42,7 @@ module Haski.Lang (
     -- Pattern matching
     , Partition (..)
     , caseof
+    , caseofM
 
     -- IFC extension
     , LStream
@@ -68,7 +69,7 @@ import qualified Data.Map as M
 import Text.PrettyPrint
 import Text.PrettyPrint.HughesPJClass hiding (prettyShow)
 
-import Haski.Backend.C (compilePlusCaseOfDefs)
+import Haski.Backend.C (compileFromOBC)
 import Haski.Clock (clockNode)
 import Haski.Core hiding (Def, Let)
 import qualified Haski.Core as Core
@@ -241,7 +242,7 @@ caseof scrut f = do
     -- The scrutinee name will be used to derive function argument names in
     -- in the generated code. A later compilation phase needs to use the same
     -- name.
-    let scrutId = scrutineeParamName
+    scrutId <- freshName Core.scrutineeParamName
     let scrutVar = Sym scrutId
 
     -- We apply the partition function on placeholder 'Sym' expressions
@@ -262,6 +263,25 @@ caseof scrut f = do
 
     mkBranch :: (Stream Bool, t) -> Branch RawP b
     mkBranch (pred, t) = Branch pred (f t)
+
+-- | 'caseof' but with a function argument that returns a monadic computation.
+-- Used for nested caseof's.
+caseofM :: forall t a b . (Partition a t, LT a, LT b)
+    => Stream a
+    -> (t -> Haski (Stream b))
+    -> Haski (Stream b)
+caseofM scrut f = do
+    scrutId <- freshName Core.scrutineeParamName
+    let scrutVar = Sym scrutId
+    let branches = map ($ scrutVar) (partition @a @t)
+    taggedBranches <- mapM computeTag branches
+    CaseOf (Scrut scrut scrutId) <$> mapM mkBranch taggedBranches
+  where
+    computeTag :: (Stream Bool, Haski t) -> Haski (Stream Bool, t)
+    computeTag (cond, adt) = (cond, ) <$> adt
+
+    mkBranch :: (Stream Bool, t) -> Haski (Branch RawP b)
+    mkBranch (pred, t) = Branch pred <$> f t
 
 -------------------------
 -- Security primitives --
@@ -554,10 +574,10 @@ compile m = print . pPrint $ cUnit
     -- schedule
     (ns_s,s3) = runPass scheduleNode s2 ns_n
     -- translate to classes
-    ((cs, caseOfDefs), s4) = Bifunctor.first unzip $ runPass translateNode s3 ns_s
+    ((cs, caseOfInfos), s4) = Bifunctor.first unzip $ runPass translateNode s3 ns_s
     -- Translate OBC things to a C99 AST, which can be prettyprinted to
     -- a target language.
-    cUnit = compilePlusCaseOfDefs (cs, caseOfDefs)
+    cUnit = compileFromOBC (cs, caseOfInfos)
     -- utlities
     runPass ::
            (a -> Seed -> (b,Seed))  -- ^ pass

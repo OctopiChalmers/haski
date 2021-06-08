@@ -72,24 +72,30 @@ instance Monoid TransUnit where
 -- Ignoring the use of the Backend interface here, since its type doesn't quite
 -- fit what we want; we need to send information to the code generator
 -- _besides_ the OBC.Class structures.
-compilePlusCaseOfDefs :: ([Class p], [OBC.CaseOfDefs p1]) -> C99.AST.TransUnit
-compilePlusCaseOfDefs (oClasses, oCaseOfDefs) = translate cUnit
+compileFromOBC :: ([Class p], [OBC.CaseOfInfo p1]) -> C99.AST.TransUnit
+compileFromOBC (oClasses, oCaseOfInfos) = translate cUnit
   where
     cUnit :: TransUnit
     cUnit = fold
         $  map cTransUnitFromClass oClasses
-        <> map cTransUnitFromCaseOfDefs oCaseOfDefs
+        <> map cTransUnitFromCaseOfInfo oCaseOfInfos
 
 -- | Convert a mapping of OBC CaseOf function definitions into a C99.Simple
 -- TransUnit that can be used to emit C.
-cTransUnitFromCaseOfDefs :: OBC.CaseOfDefs p -> TransUnit
-cTransUnitFromCaseOfDefs oCaseOfDefs =
-    let funs   = map (uncurry cCaseOfDef) . M.assocs $ oCaseOfDefs
-        declns = map (\(FunDef t s ps _ _) -> FunDecln Nothing t s ps) funs
+cTransUnitFromCaseOfInfo :: OBC.CaseOfInfo p -> TransUnit
+cTransUnitFromCaseOfInfo oCaseOfInfo =
+    let funs    = map (uncurry cCaseOfDef) . M.assocs $ oCaseOfDefs
+        declns  = map (\(FunDef t s ps _ _) -> FunDecln Nothing t s ps) funs
+            <> map (extract cDeclnFromVar) exVars
         -- We need to derive the function declarations so that funcions
         -- can be called before they are defined.
     in TransUnit declns funs
   where
+    (oCaseOfDefs, exVars) = (\(OBC.CaseOfInfo x ys) -> (x, ys)) oCaseOfInfo
+
+    cDeclnFromVar :: forall a . LT a => Var a -> Decln
+    cDeclnFromVar v = VarDecln Nothing (cType @a) (getName v) Nothing
+
     cCaseOfDefs :: OBC.CaseOfDefs p -> [C.FunDef]
     cCaseOfDefs = map (uncurry cCaseOfDef) . M.assocs
 
@@ -108,18 +114,23 @@ cTransUnitFromClass (Class name fields instances reset step) =
 cCaseOfDef :: Name -> OBC.CaseDef p -> C.FunDef
 cCaseOfDef
     funName
-    (OBC.CaseDef (Proxy :: Proxy retTy) obcParams fieldExps stmts)
-  = let declns = map (uncurry mkVarDecln) $ M.assocs fieldExps
-        stmts' = map genCStmt stmts
-    in FunDef (cType @retTy) funName (map mkParam obcParams) declns stmts'
+    (OBC.CaseDef (Proxy :: Proxy retTy) obcParams globalScrutName fieldExps stmts)
+  = let scrutAss = mkScrutAss globalScrutName (head obcParams)  -- yikes
+        fieldAssignments = map (uncurry mkFieldAss) $ M.assocs fieldExps
+        stmts' = scrutAss : fieldAssignments <> map genCStmt stmts
+    in FunDef (cType @retTy) funName (map mkParam obcParams) [] stmts'
   where
+    mkScrutAss :: Name -> Ex Var -> Stmt
+    mkScrutAss s ex = Expr $
+        AssignOp Assign (Ident s) (extract (Ident . getName) ex)
+
     mkParam :: Ex Var -> Param
     mkParam (Ex (var :: Var a)) = Param (cType @a) (getName var)
 
-    mkVarDecln :: Name -> Ex (OBC.Exp p) -> Decln
-    mkVarDecln name (Ex (e :: OBC.Exp p a)) =
+    mkFieldAss :: Name -> Ex (OBC.Exp p) -> Stmt
+    mkFieldAss name (Ex (e :: OBC.Exp p a)) =
         let ce = genCExpr e
-        in VarDecln Nothing (cType @a) name (Just (InitExpr ce))
+        in Expr $ AssignOp Assign (Ident name) ce
 
 voidC :: Type
 voidC = Type (TypeSpec Void)

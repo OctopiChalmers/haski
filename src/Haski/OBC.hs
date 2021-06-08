@@ -5,7 +5,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TupleSections #-}
 
 module Haski.OBC where
 
@@ -57,9 +56,12 @@ type CaseOfDefs p = M.Map String (CaseDef p)
 
 -- | Function definition for handling the logic of a pattern match.
 data CaseDef p = forall retTy . (LT retTy) => CaseDef
-    (Proxy retTy)  -- ^ Return type.
-    [Ex Var]       -- ^ Function parameters.
-    (M.Map Name (Ex (Exp p)))
+    { cdRetTy :: Proxy retTy  -- ^ Return type.
+    , cdParams :: [Ex Var]     -- ^ Function parameters.
+    , cdGlobalScrutName :: Name
+    -- ^ The global variable that the scrutinee will immediately
+    -- be assigned to at the beginning of the function.
+    , cdFieldExps :: M.Map Name (Ex (Exp p))
     -- ^ Variable bindings for expressions corresponding to the fields
     -- of Partition ADTs. For example, a ("var_0", Var "x" :: Exp p Int)
     -- binding is roughly equivalent to the "int var_0 = x;" C statement.
@@ -67,7 +69,8 @@ data CaseDef p = forall retTy . (LT retTy) => CaseDef
     -- "Haski.Lang.partition" to the field of some constructor. This expression
     -- can be used in multiple locations, so we bind it to a variable to reduce
     -- code that computes the same thing several times.
-    [Stmt p]  -- ^ Function body.
+    , cdBody :: [Stmt p]  -- ^ Function body.
+    }
 
 data Stmt p where
     Let     :: LT a => Var a -> Exp p a -> Stmt p
@@ -202,6 +205,10 @@ data GenSt p = GenSt
     -- "exit" the expression, we pop the map off the stack. Keeping a stack
     -- of mappings allows us to have nested caseof-expressions without scoping
     -- issues.
+
+    , globalVars :: S.Set (Ex Var)
+    -- ^ Accumulated variable usage that need to be declared as global variables
+    -- in the final C output.
     }
 
 type Gen p = State (GenSt p)
@@ -228,7 +235,7 @@ isRef x = do
     return $ any isX fields
 
 -- translate normal expressions
-te :: NGExp p a -> Gen p (Exp p a)
+te :: forall p a . NGExp p a -> Gen p (Exp p a)
 te (NGVal _ x) = return (Val x)
 te (NGVar _ x) = do
     isRefX <- isRef x
@@ -246,14 +253,24 @@ te (NGGt _ e1 e2)  = Gt <$> (te e1) <*> (te e2)
 te (NGGtPoly _ e1 e2)    = GtPoly <$> te e1 <*> te e2
 te (NGNot _ e)           = Not <$> te e
 te (NGIfte _ b e1 e2)    = Ifte <$> te b <*> te e1 <*> te e2
-te (NGSym _ sid)         = pure $ Sym sid
+te (NGSym _ sid)         = do
+    let newVar = Core.MkVar @a (sid, Nothing)
+    modify (\s -> s { globalVars = Ex newVar `S.insert` globalVars s })
+    pure $ Sym sid
 te (NGFieldExp _ name e) = do
-    e' <- te e
     -- When we encounter an expression tagged as a field to a constructor,
     -- we assume that we are currently "inside" a case-of function.
     -- We need to add a binding to the expression to the current context, so
-    -- that variable declarations can be inserted later.
+    -- that it can be reused in following code.
+    e' <- te e
     modFieldExpsTop (M.insert name (Ex e'))
+
+    -- Also, We must also add the name of the variable to the global variables of the
+    -- compilation state, so that we can generate a declaration for it in the
+    -- backend (without having to use State in the backend).
+    let newVar = Core.MkVar @a (name, Nothing)
+    modify (\s -> s { globalVars = Ex newVar `S.insert` globalVars s })
+
     return $ Sym name
 
 {- (the `te NGCaseOf` case should probably be a separate function...)
@@ -283,6 +300,22 @@ This list of variables is stored in both the CaseOfDefs (for the function
 signature), and the function call expression (so we can supply the right
 arguments when calling).
 
+To keep field expressions in scope, we use global variables (à la hpatterns).
+This is only because I didn't have enough time to pass these via the function
+calls properly (nested caseof calls needs some more sophisticated context
+management than what I have hacked together here).
+
+Field expressions are, unfortunately, calculated and assigned for every caseof
+function they are used in, even if they could have re-used one from their
+parent. This is potentially redundant and inefficient, in particular if the
+operation in 'partition' is expensive, but it is done this way because it is
+hard to correctly only generate the field expression calculation and assignment
+only once, where it is needed (for example, in the same function whose scrutinee
+it is derived from). This is just due to my shoddy scoping management; it's
+probably easier to fix this if re-done from scratch.
+
+--
+
 This is noted in the Haski.Backend.C module description as well, but it should
 be noted that this method of keeping variables in scope is not very robust;
 we assume that everything we can use in our Haskell expression will also be
@@ -297,86 +330,89 @@ te (NGCaseOf
     (scrut    :: Core.Scrut (p, NormP) scrutTy)
     (branches :: [Core.Branch (p, NormP) retTy]))
     = do
+        -- Translate the scrutinee expression, which will be the argument to the
+        -- call to the pattern matching function.
+        let Core.Scrut e sid = scrut
+        e' <- te e
+
         -- Generate the definition of the pattern matching function and add
         -- it to the compilation state. While generating the function defintion,
         -- we also get a list of used variables that would become unbound in
         -- the generated functions (in the new scope); we need to explicitly
         -- create parameters for these in the generated function.
-        (funName, def, inScopeVars) <- newCaseDef branches
+        (funName, def, inScopeVars) <- newCaseDef sid branches
         modify $ \ st -> st { funDefs = M.insert funName def (funDefs st) }
 
-        -- Translate the scrutinee expression, which will be the argument to the
-        -- call to the pattern matching function.
-        let Core.Scrut e sid = scrut
-        e' <- te e
-        let funCall = CaseOfCall e' funName inScopeVars
 
-        pure funCall
+        pure $ CaseOfCall e' funName inScopeVars
   where
-    newCaseDef :: [Core.Branch (p, NormP) b] -> Gen p (String, CaseDef p, [Ex Var])
-    newCaseDef bs = do
+    newCaseDef :: ScrutId -> [Core.Branch (p, NormP) b] -> Gen p (String, CaseDef p, [Ex Var])
+    newCaseDef sid bs = do
         -- Since we are "entering" a new (case-of) function, we need to open
         -- a new context, since any encountered FieldExps belong to __this__
         -- function definition in particular.
         pushFieldExps
 
+        (ifs, vars) <- unzip <$> mapM mkIf bs
+        let inScopeVars = S.elems (S.unions vars)
+
         -- The scrutinee parameter of the function must use the same name
         -- as the references to it inside the function, generated when applying
         -- 'Haski.Lang.caseof'.
         funName <- freshName "case_of_"
-        let scrutParam = Ex $ Core.MkVar @scrutTy (Core.scrutineeParamName, Nothing)
-
-        retVar <- Core.MkVar . (, Nothing) <$> freshName "retVar"
-        (ifs, vars) <- unzip <$> mapM (mkIf retVar) bs
-        let inScopeVars = S.elems (S.unions vars)
-        let funBody = ifs
+        let scrutParam = Core.MkVar @scrutTy (Core.scrutineeParamName, Nothing)
 
         -- Retrieve the encountered FieldExps in this function definition and
         -- remove the top context from the stack since we are now "exiting"
         -- the function.
         fieldExps <- popFieldExps
 
-        return ( funName
-               , CaseDef (Proxy @retTy) (scrutParam : inScopeVars) fieldExps funBody
-               , inScopeVars
-               )
+        let caseDef = CaseDef
+                { cdRetTy = Proxy @retTy
+                , cdParams = Ex scrutParam : inScopeVars
+                , cdGlobalScrutName = sid
+                , cdFieldExps = fieldExps
+                , cdBody = ifs
+                }
+
+        return (funName, caseDef, inScopeVars)
 
     -- Create an if-statement corresponding to one branch of a pattern match.
     -- Return the statement and all variables contained within the body.
-    mkIf :: Var a -> Core.Branch (p, NormP) b -> Gen p (Stmt p, S.Set (Ex Var))
-    mkIf retVar (Core.Branch cond body) = do
+    mkIf :: Core.Branch (p, NormP) b -> Gen p (Stmt p, S.Set (Ex Var))
+    mkIf (Core.Branch cond body) = do
+        -- Find all variables used inside the function body so we can provide
+        -- the caller with the correct arguments.
+        let vars = collect body `S.union` collect cond
         cond' <- te cond
         body' <- te body
-        -- Find all variables used inside the function body so we can provide
-        -- the caller with the correct arguments. It's little bit inefficient
-        -- that we translate the expression and then immediately traverse it,
-        -- but it's a lot cleaner to use a separate pass than to bake it into
-        -- the job of 'te'.
-        let vars = collectVars body'
         pure (If cond' [Return body'], vars)
 
     -- Traverse an expression tree and return any variables we encounter.
-    collectVars :: forall p b . LT b => Exp p b -> S.Set (Ex Var)
-    collectVars = go S.empty
+    collect :: forall p b . LT b => NGExp p b -> S.Set (Ex Var)
+    collect = go S.empty
       where
-        go :: LT c => S.Set (Ex Var) -> Exp p c -> S.Set (Ex Var)
+        go :: LT c => S.Set (Ex Var) -> NGExp p c -> S.Set (Ex Var)
         go vars = \case
-            Var v        -> Ex v `S.insert` vars
-            -- NOTE: Ref v might be questionable, not entirely sure when and/or
-            -- if this could happen, and what it's behavior would be.
-            Ref v        -> Ex v `S.insert` vars
-            Add x y      -> go (go vars x) y
-            Mul x y      -> go (go vars x) y
-            Sig e        -> go vars e
-            Neg e        -> go vars e
-            Abs e        -> go vars e
-            Gt  x y      -> go (go vars x) y
-            GtPoly x y   -> go (go vars x) y
-            Not e        -> go vars e
-            Ifte b e1 e2 -> go (go (go vars b) e1) e2
-            Val{}        -> vars
-            Sym{}        -> vars
-            CaseOfCall e _ _ -> go vars e
+            (NGVal _ x) -> vars
+            (NGVar _ x) -> Ex x `S.insert` vars
+            (NGWhn _ e _xc) -> go vars e
+            (NGAdd _ e1 e2) -> go (go vars e1) e2
+            (NGMul _ e1 e2) -> go (go vars e1) e2
+            (NGSig _ e)     -> go vars e
+            (NGNeg _ e)     -> go vars e
+            (NGAbs _ e)     -> go vars e
+            (NGGt _ e1 e2)  -> go (go vars e1) e2
+            (NGGtPoly _ e1 e2) -> go (go vars e1) e2
+            (NGNot _ e)        -> go vars e
+            (NGIfte _ b e1 e2) -> go (go (go vars b) e1) e2
+            (NGSym _ _sid)      -> vars
+            (NGFieldExp _ _name e) -> go vars e
+
+            (NGCaseOf _ (Core.Scrut e _sid) branches) ->
+                go vars e `S.union` S.unions (map goBranch branches)
+              where
+                goBranch (Core.Branch b e) = collect b `S.union` collect e
 
 -- translates control expressions to statements
 tca :: LT a => Var a -> NCA p a -> Gen p (Stmt p)
@@ -417,13 +453,16 @@ teqlist :: [CEQ p] -> CGen p [CStmt p]
 teqlist eqs = foldrM go [] eqs
     where go eq accStmt = flip (:) accStmt <$> teq eq
 
-tpN :: CEQNode p -> Seed -> ((CClass p, CaseOfDefs (p, ClockP)), Seed)
-tpN (EQNode name args eqs res) sd = ((clas, caseOfDefs), seed resSt)
+-- Stuff needed to generate code for pattern matching functions.
+data CaseOfInfo p = CaseOfInfo (CaseOfDefs (p, ClockP)) [Ex Var]
+
+tpN :: CEQNode p -> Seed -> ((CClass p, CaseOfInfo p), Seed)
+tpN (EQNode name args eqs res) sd = ((clas, caseOfInfo), seed resSt)
     where
         -- build translation computation
         transM = (,) <$> teqlist eqs <*> te res
         -- execute translation
-        ((stmts,res'),resSt) = runState transM (GenSt [] [] [] sd M.empty [])
+        ((stmts,res'),resSt) = runState transM (GenSt [] [] [] sd M.empty [] S.empty)
         -- build step method
         step = Step args res' stmts
         -- build class
@@ -431,11 +470,10 @@ tpN (EQNode name args eqs res) sd = ((clas, caseOfDefs), seed resSt)
                     (fields resSt) (objs resSt)
                     (reset resSt) step
 
-        -- Stuff needed to generate code for pattern matching functions.
-        caseOfDefs = funDefs resSt
+        caseOfInfo = CaseOfInfo (funDefs resSt) (S.toAscList . globalVars $ resSt)
 
 -- Main entry point
-translateNode :: CEQNode p -> Seed -> ((CClass p, CaseOfDefs (p, ClockP)), Seed)
+translateNode :: CEQNode p -> Seed -> ((CClass p, CaseOfInfo p), Seed)
 translateNode = tpN
 
 localVars :: [Stmt p] -> [Ex Var]
