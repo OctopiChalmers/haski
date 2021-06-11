@@ -238,7 +238,11 @@ caseof :: forall t a b . (Partition a t, LT a, LT b)
     -> (t -> Stream b)   -- ^ Pattern matching function, typically a function
                          -- using Haskell's case-of expression or lambda-case.
     -> Haski (Stream b)
-caseof scrut f = do
+caseof scrut f = letDef =<< do
+    -- 'letDef' is used to force clock-checking on the scrutinee and branches.
+    -- Not sure how it actually works, but adding it makes clock-checking work
+    -- as expected (I think).
+
     -- The scrutinee name will be used to derive function argument names in
     -- in the generated code. A later compilation phase needs to use the same
     -- name.
@@ -270,7 +274,7 @@ caseofM :: forall t a b . (Partition a t, LT a, LT b)
     => Stream a
     -> (t -> Haski (Stream b))
     -> Haski (Stream b)
-caseofM scrut f = do
+caseofM scrut f = letDef =<< do
     scrutId <- freshName Core.scrutineeParamName
     let scrutVar = Sym scrutId
     let branches = map ($ scrutVar) (partition @a @t)

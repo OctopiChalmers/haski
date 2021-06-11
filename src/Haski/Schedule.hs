@@ -46,6 +46,18 @@ left e = vars (getClock e) `S.union` go e
     go (NGNeg _ e)       = go e
     go (NGGt _ e1 e2)    = S.union (go e1) (go e2)
 
+    -- I have no idea if these are right; just threading 'go' through all
+    -- sub-expressions. I've left out the implementation for the other
+    -- primitives that weren't part of the pattern matching implementation
+    -- (NGNot, NGIfte, NGGtPoly).
+    go (NGSym _ x) = S.singleton x
+    go (NGFieldExp _ _ e) = go e
+    go (NGCaseOf _ (Scrut e _) branches) =
+        go e `S.union` foldMap goBranch branches
+      where
+        goScrut (Scrut e _) = go e
+        goBranch (Branch condE bodyE) = go condE `S.union` go bodyE
+
 -- variables read the by an NCA expression
 leftNCA :: CNCA p a -> S.Set Name
 leftNCA (NExp e)       = left e
