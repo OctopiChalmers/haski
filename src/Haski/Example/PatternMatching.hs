@@ -11,6 +11,23 @@ import Haski.Example.Simple
 import Haski.Lang
 import Haski.TH
 
+-- * Pattern matching using identity instances
+
+-- Makes use the 'Partition Int8 Int8' instance to get behavior similar to
+-- that of 'match'.
+lit :: Stream Int8 -> Haski (Stream Int8)
+lit = node "lit" $ \ns -> mdo
+    caseof ns $ \case
+        0 -> 0
+        1 -> 99
+        n | odd n  -> val n
+          | even n -> val (-n)
+
+litcall :: Haski (Stream Int8)
+litcall = mdo
+    ns <- letDef 1
+    lit ns
+
 -- * Pattern matching on Double
 
 data HasFever

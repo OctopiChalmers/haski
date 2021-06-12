@@ -240,12 +240,31 @@ class Partition a t where
     -}
     partition :: [Stream a -> (Stream Bool, Haski t)]
 
+-- | Helper function for identity instances, for 'FinEnum' types.
+--
+--  Since a 'Partition' instance is necessary to use 'caseof',
+--  it was a bit inconvenient for non-"normal" sum types,
+--  e.g. Int8. The helper function 'enumIdPartitions' acts similar
+--  to The Trick, enumerating through all values of the input
+--  type of the 'Partition' to generate literal constructor cases.
+--
+--  By implementing 'partition' with this for instances such as
+--  'Partition Int8 Int8', we can get similar functionality to
+--  that of 'match'
 enumIdPartitions :: forall a . (FinEnum a, LT a)
     => [Stream a -> (Stream Bool, Haski a)]
 enumIdPartitions = map build [minBound .. maxBound]
   where
     build :: a -> Stream a -> (Stream Bool, Haski a)
     build x = \v -> (v ==. val x, pure x)
+
+-- Examples of how 'enumIdPartitions' can be used to get similar functionality
+-- to 'match' for FinEnum types:
+
+instance Partition Int8 Int8 where
+    partition = enumIdPartitions
+instance Partition Bool Bool where
+    partition = enumIdPartitions
 
 caseof :: forall t a b . (Partition a t, LT a, LT b)
     => Stream a          -- ^ Scrutinee
