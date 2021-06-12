@@ -47,9 +47,11 @@ left e = vars (getClock e) `S.union` go e
     go (NGGt _ e1 e2)    = S.union (go e1) (go e2)
 
     -- I have no idea if these are right; just threading 'go' through all
-    -- sub-expressions. I've left out the implementation for the other
+    -- sub-expressions. I've left out the implementation for some of the other
     -- primitives that weren't part of the pattern matching implementation
-    -- (NGNot, NGIfte, NGGtPoly).
+    -- (NGNot, NGIfte, NGGtPoly). They can be easily added if needed.
+
+    go (NGEq _ e1 e2) = go e1 `S.union` go e2
     go (NGSym _ x) = S.singleton x
     go (NGFieldExp _ _ e) = go e
     go (NGCaseOf _ (Scrut e _) branches) =

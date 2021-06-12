@@ -63,6 +63,9 @@ data GExp p a where
     -- Polymorphic greater-than
     GGtPoly :: (Num a, LT a)
         => ArgGtPoly p -> GExp p a -> GExp p a -> GExp p Bool
+    -- Equality
+    GEq :: (Eq a, LT a)
+        => ArgEq p -> GExp p a -> GExp p a -> GExp p Bool
     -- Logical NOT
     GNot :: ()
         => ArgNot p -> GExp p Bool -> GExp p Bool
@@ -119,6 +122,9 @@ pattern Gt e1 e2    = GGt () e1 e2
 pattern GtPoly :: (ArgGtPoly p ~ ()) => (LT a, Num a, b ~ Bool)
     => GExp p a -> GExp p a -> GExp p b
 pattern GtPoly e1 e2   = GGtPoly () e1 e2
+pattern Eq :: (ArgEq p ~ ()) => (LT a, Eq a, b ~ Bool)
+    => GExp p a -> GExp p a -> GExp p b
+pattern Eq e1 e2   = GEq () e1 e2
 pattern Not :: (ArgNot p ~ ()) => (a ~ Bool)
     => GExp p Bool -> GExp p a
 pattern Not e          = GNot () e
@@ -167,6 +173,7 @@ mapAnn f (GNeg p e )   = GNeg (f p) (mapAnn f e)
 mapAnn f (GGt p e e')  = GGt (f p) (mapAnn f e) (mapAnn f e')
 
 mapAnn f (GGtPoly p e e')    = GGtPoly (f p) (mapAnn f e) (mapAnn f e')
+mapAnn f (GEq p e e')        = GEq (f p) (mapAnn f e) (mapAnn f e')
 mapAnn f (GNot p e)          = GNot (f p) (mapAnn f e)
 mapAnn f (GIfte p b e1 e2)   = GIfte (f p) (mapAnn f b) (mapAnn f e1) (mapAnn f e1)
 mapAnn f (GSym p sid)        = GSym (f p) sid
@@ -198,6 +205,8 @@ mapSndAnn f (GGt (p,q) e e')  = GGt (p, f q) (mapSndAnn f e) (mapSndAnn f e')
 
 mapSndAnn f (GGtPoly (p,q) e e')     =
     GGtPoly (p, f q) (mapSndAnn f e) (mapSndAnn f e')
+mapSndAnn f (GEq (p,q) e e')         =
+    GEq (p, f q) (mapSndAnn f e) (mapSndAnn f e')
 mapSndAnn f (GNot (p,q) e)           = GNot (p, f q) (mapSndAnn f e)
 mapSndAnn f (GIfte (p,q) b e1 e2)    =
     GIfte (p, f q) (mapSndAnn f b) (mapSndAnn f e1) (mapSndAnn f e2)
@@ -241,7 +250,9 @@ getAnn (GAbs p e)    = p
 getAnn (GSig p e)    = p
 getAnn (GNeg p e)    = p
 getAnn (GGt p e e')  = p
+
 getAnn (GGtPoly p e e') = p
+getAnn (GEq p e e') = p
 getAnn (GNot p e)    = p
 getAnn (GIfte p b e1 e2) = p
 getAnn (GCaseOf p _predE _bodyE) = p
@@ -282,6 +293,10 @@ unpack (GGtPoly (p,q) e e') = let
     (e1, e2)   = unpack e
     (e1', e2') = unpack e'
     in (GGtPoly p e1 e1', GGtPoly q e2 e2')
+unpack (GEq (p,q) ea eb) = let
+    (ea1, ea2) = unpack ea
+    (eb1, eb2) = unpack eb
+    in (GEq p ea1 eb1, GEq q ea2 eb2)
 unpack (GNot (p,q) e) =
     let (e1, e2) = unpack e
     in (GNot p e1, GNot q e2)
@@ -332,6 +347,7 @@ getLTDict (GAbs _ e)      = getLTDict e
 getLTDict (GGt _ _ _)     = Dict @(LT Bool)
 
 getLTDict (GGtPoly _ _ _)   = Dict @(LT Bool)
+getLTDict (GEq _ _ _)       = Dict @(LT Bool)
 getLTDict (GNot _ _)        = Dict @(LT Bool)
 getLTDict (GCaseOf _ _ _)   = Dict
 getLTDict (GSym _ _)        = Dict

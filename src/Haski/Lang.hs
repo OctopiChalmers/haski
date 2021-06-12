@@ -23,6 +23,7 @@ module Haski.Lang (
     , gtE
 
     , (>.)
+    , (==.)
     , notE
     , iftePrim
 
@@ -41,6 +42,7 @@ module Haski.Lang (
 
     -- Pattern matching
     , Partition (..)
+    , enumIdPartitions
     , caseof
     , caseofM
 
@@ -128,6 +130,11 @@ gtE e1 e2 = Gt e1 e2
 infix 4 >.
 (>.) :: (Num a, LT a) => Stream a -> Stream a -> Stream Bool
 (>.) = GtPoly
+
+-- | Equality.
+infix 4 ==.
+(==.) :: (Eq a, LT a) => Stream a -> Stream a -> Stream Bool
+(==.) = Eq
 
 -- | Logical NOT, as a primitive.
 notE :: Stream Bool -> Stream Bool
@@ -232,6 +239,13 @@ class Partition a t where
     order, so we they may overlap if desired.
     -}
     partition :: [Stream a -> (Stream Bool, Haski t)]
+
+enumIdPartitions :: forall a . (FinEnum a, LT a)
+    => [Stream a -> (Stream Bool, Haski a)]
+enumIdPartitions = map build [minBound .. maxBound]
+  where
+    build :: a -> Stream a -> (Stream Bool, Haski a)
+    build x = \v -> (v ==. val x, pure x)
 
 caseof :: forall t a b . (Partition a t, LT a, LT b)
     => Stream a          -- ^ Scrutinee

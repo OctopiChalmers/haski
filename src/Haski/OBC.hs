@@ -104,6 +104,7 @@ data Exp p a where
     Gt  :: Exp p Int -> Exp p Int -> Exp p Bool
 
     GtPoly :: (LT a, Num a) => Exp p a -> Exp p a -> Exp p Bool
+    Eq     :: (LT a, Eq a) => Exp p a -> Exp p a -> Exp p Bool
     Not    :: Exp p Bool -> Exp p Bool
     Ifte   :: LT a => Exp p Bool -> Exp p a -> Exp p a -> Exp p a
     Sym    :: ScrutId -> Exp p a
@@ -141,7 +142,9 @@ instance Eq a => Eq (Exp p a) where
     -- Function calls to pattern matching functions are never equal for now
     CaseOfCall{} == CaseOfCall{} = False
     -- Ditto for GtPoly
-    GtPoly{}     == GtPoly{}= False
+    GtPoly{}     == GtPoly{} = False
+    -- Ditto
+    Eq{}         == Eq{} = False
 
     _ == _ = False
 
@@ -251,6 +254,7 @@ te (NGAbs _ e)     = Abs <$> (te e)
 te (NGGt _ e1 e2)  = Gt <$> (te e1) <*> (te e2)
 
 te (NGGtPoly _ e1 e2)    = GtPoly <$> te e1 <*> te e2
+te (NGEq _ e1 e2)        = Eq <$> te e1 <*> te e2
 te (NGNot _ e)           = Not <$> te e
 te (NGIfte _ b e1 e2)    = Ifte <$> te b <*> te e1 <*> te e2
 te (NGSym _ sid)         = do
@@ -404,9 +408,10 @@ te (NGCaseOf
             (NGAbs _ e)     -> go vars e
             (NGGt _ e1 e2)  -> go (go vars e1) e2
             (NGGtPoly _ e1 e2) -> go (go vars e1) e2
+            (NGEq _ e1 e2)     -> go (go vars e1) e2
             (NGNot _ e)        -> go vars e
             (NGIfte _ b e1 e2) -> go (go (go vars b) e1) e2
-            (NGSym _ _sid)      -> vars
+            (NGSym _ _sid)     -> vars
             (NGFieldExp _ _name e) -> go vars e
 
             (NGCaseOf _ (Core.Scrut e _sid) branches) ->

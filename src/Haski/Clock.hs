@@ -45,6 +45,7 @@ type instance ArgNeg ClockP = Clock
 type instance ArgGt  ClockP = Clock
 
 type instance ArgGtPoly ClockP   = Clock
+type instance ArgEq ClockP       = Clock
 type instance ArgNot ClockP      = Clock
 type instance ArgIfte ClockP     = Clock
 type instance ArgCaseOf ClockP   = Clock
@@ -226,6 +227,9 @@ inferClock (GGt ann e1 e2) = do
 inferClock (GGtPoly ann e1 e2) = do
     a <- freshTyVar
     GGtPoly (ann,a) <$> checkClock e1 a <*> checkClock e2 a
+inferClock (GEq ann e1 e2) = do
+    a <- freshTyVar
+    GEq (ann,a) <$> checkClock e1 a <*> checkClock e2 a
 inferClock (GNot ann e) = do
     a <- freshTyVar
     GNot (ann,a) <$> checkClock e a
@@ -392,6 +396,7 @@ type instance ArgNeg CkTy = CkTy
 type instance ArgGt  CkTy = CkTy
 
 type instance ArgGtPoly CkTy   = CkTy
+type instance ArgEq CkTy       = CkTy
 type instance ArgNot CkTy      = CkTy
 type instance ArgIfte CkTy     = CkTy
 type instance ArgCaseOf CkTy   = CkTy

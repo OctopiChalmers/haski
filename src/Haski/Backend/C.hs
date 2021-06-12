@@ -223,6 +223,7 @@ genCExpr (OBC.Abs e)     = absC $ genCExpr e
 genCExpr (OBC.Gt e1 e2)  = genCExpr e1 .> genCExpr e2
 
 genCExpr (OBC.GtPoly e1 e2) = genCExpr e1 .> genCExpr e2
+genCExpr (OBC.Eq e1 e2)     = genCExpr e1 .== genCExpr e2
 genCExpr (OBC.Not e)        = UnaryOp BoolNot $ genCExpr e
 genCExpr (OBC.Ifte b e1 e2) = Cond (genCExpr b) (genCExpr e1) (genCExpr e2)
 genCExpr (OBC.Sym sid)      = Ident sid

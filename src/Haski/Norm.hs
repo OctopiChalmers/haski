@@ -39,6 +39,7 @@ type instance ArgFby NormP = TypeError (Invalid "NA" "Fby")
 type instance ArgMrg NormP = TypeError (Invalid "NA" "Merge")
 
 type instance ArgGtPoly NormP   = ()
+type instance ArgEq NormP       = ()
 type instance ArgNot NormP      = ()
 type instance ArgIfte NormP     = ()
 type instance ArgSym NormP      = ()
@@ -126,6 +127,9 @@ pattern NGGt ann e1 e2 = GGt (ann,()) e1 e2
 pattern NGGtPoly :: () => (LT a, Num a, b ~ Bool)
     => ArgGtPoly p -> NGExp p a -> NGExp p a -> NGExp p b
 pattern NGGtPoly ann e1 e2   = GGtPoly (ann,()) e1 e2
+pattern NGEq :: () => (LT a, Eq a, b ~ Bool)
+    => ArgEq p -> NGExp p a -> NGExp p a -> NGExp p b
+pattern NGEq ann e1 e2   = GEq (ann,()) e1 e2
 pattern NGNot :: () => (a ~ Bool) => ArgNot p -> NGExp p Bool -> NGExp p a
 pattern NGNot ann e1         = GNot (ann,()) e1
 pattern NGIfte ann b e1 e2   = GIfte (ann,()) b e1 e2
@@ -188,6 +192,7 @@ normE (GGt ann e1 e2) = do
     return (NGGt ann e1' e2')
 
 normE (GGtPoly ann e1 e2)   = NGGtPoly ann <$> normE e1 <*> normE e2
+normE (GEq ann e1 e2)       = NGEq ann <$> normE e1 <*> normE e2
 normE (GNot ann e)          = NGNot ann <$> normE e
 normE (GIfte ann b e1 e2)   = NGIfte ann <$> normE b <*> normE e1 <*> normE e2
 normE (GSym ann sid)        = return (NGSym ann sid)
